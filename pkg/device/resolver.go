@@ -8,44 +8,65 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/tools/cache"
 )
 
 var (
-	// Filesystem-mode PVCs: .../pods/<pod-uid>/volumes/<plugin>/<pv-name>[/mount]
+	// Filesystem-mode volumes: .../pods/<pod-uid>/volumes/<plugin>/<pv-name>[/mount]
 	kubeletVolumeRe = regexp.MustCompile(
 		`.*/pods/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/volumes/[^/]+/([^/]+)(?:/mount)?$`,
 	)
-	// Block-mode PVCs (CSI): .../volumeDevices/publish/<pvc-name>/<pod-uid>
+	// Block-mode volumes (CSI): .../volumeDevices/publish/<pv-name>/<pod-uid>
 	kubeletBlockDeviceRe = regexp.MustCompile(
 		`.*/volumeDevices/publish/([^/]+)/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$`,
 	)
 )
 
 type DeviceInfo struct {
-	PVName    string
-	PodUID    string
+	PVCName   string
+	PodName   string
+	Namespace string
 	NodeName  string
 	MountPath string
 	DevPath   string
 	IsNFS     bool
 }
 
-type Resolver struct {
-	mu       sync.RWMutex
-	devices  map[uint32]DeviceInfo
-	nodeName string
-	interval time.Duration
-	procPath string
-	log      *slog.Logger
+const PVCByPVIndexName = "byPV"
+
+func PVCByPVIndexFunc(obj interface{}) ([]string, error) {
+	pvc, ok := obj.(*corev1.PersistentVolumeClaim)
+	if !ok {
+		return nil, nil
+	}
+	if pvc.Spec.VolumeName == "" {
+		return nil, nil
+	}
+	return []string{pvc.Spec.VolumeName}, nil
 }
 
-func NewResolver(nodeName, procPath string, interval time.Duration, log *slog.Logger) *Resolver {
+type Resolver struct {
+	mu         sync.RWMutex
+	devices    map[uint32]DeviceInfo
+	nodeName   string
+	interval   time.Duration
+	procPath   string
+	podStore   cache.Store
+	pvcIndexer cache.Indexer
+	log        *slog.Logger
+}
+
+func NewResolver(nodeName, procPath string, interval time.Duration, podStore cache.Store, pvcIndexer cache.Indexer, log *slog.Logger) *Resolver {
 	return &Resolver{
-		devices:  make(map[uint32]DeviceInfo),
-		nodeName: nodeName,
-		interval: interval,
-		procPath: procPath,
-		log:      log,
+		devices:    make(map[uint32]DeviceInfo),
+		nodeName:   nodeName,
+		interval:   interval,
+		procPath:   procPath,
+		podStore:   podStore,
+		pvcIndexer: pvcIndexer,
+		log:        log,
 	}
 }
 
@@ -79,13 +100,15 @@ func (r *Resolver) scan() {
 		return
 	}
 
+	podMetas := r.podMetaMap()
+
 	devices := make(map[uint32]DeviceInfo)
 
 	for _, m := range mounts {
-		podUID, pvName, isBlock := parseKubeletBlockDevicePath(m.MountPoint)
+		podUID, pvcName, isBlock := parseKubeletBlockDevicePath(m.MountPoint)
 		if !isBlock {
 			var ok bool
-			podUID, pvName, ok = parseKubeletVolumePath(m.MountPoint)
+			podUID, pvcName, ok = parseKubeletVolumePath(m.MountPoint)
 			if !ok {
 				continue
 			}
@@ -103,9 +126,13 @@ func (r *Resolver) scan() {
 			dev = blockDev
 		}
 
+		pvcName = r.resolvePVCName(pvcName)
+
+		meta := podMetas[podUID]
 		info := DeviceInfo{
-			PVName:    pvName,
-			PodUID:    podUID,
+			PVCName:   pvcName,
+			PodName:   meta.Name,
+			Namespace: meta.Namespace,
 			NodeName:  r.nodeName,
 			MountPath: m.MountPoint,
 			DevPath:   m.Source,
@@ -115,8 +142,9 @@ func (r *Resolver) scan() {
 		devices[dev] = info
 		r.log.Debug("resolved kubelet volume",
 			"dev", DevToString(dev),
-			"pv", pvName,
+			"pvc", pvcName,
 			"podUID", podUID,
+			"namespace", info.Namespace,
 			"source", m.Source,
 			"fsType", m.FSType,
 			"blockDevice", isBlock,
@@ -130,14 +158,49 @@ func (r *Resolver) scan() {
 	r.log.Debug("device scan complete", "resolved", len(devices))
 }
 
-func parseKubeletVolumePath(mountPoint string) (podUID, pvName string, ok bool) {
+type podMeta struct {
+	Name      string
+	Namespace string
+}
+
+func (r *Resolver) podMetaMap() map[string]podMeta {
+	result := make(map[string]podMeta)
+	if r.podStore == nil {
+		return result
+	}
+	for _, obj := range r.podStore.List() {
+		pod, ok := obj.(*corev1.Pod)
+		if !ok {
+			continue
+		}
+		result[string(pod.UID)] = podMeta{Name: pod.Name, Namespace: pod.Namespace}
+	}
+	return result
+}
+
+func (r *Resolver) resolvePVCName(pvName string) string {
+	if r.pvcIndexer == nil {
+		return pvName
+	}
+	items, err := r.pvcIndexer.ByIndex(PVCByPVIndexName, pvName)
+	if err != nil || len(items) == 0 {
+		return pvName
+	}
+	pvc, ok := items[0].(*corev1.PersistentVolumeClaim)
+	if !ok {
+		return pvName
+	}
+	return pvc.Name
+}
+
+func parseKubeletVolumePath(mountPoint string) (podUID, pvcName string, ok bool) {
 	if matches := kubeletVolumeRe.FindStringSubmatch(mountPoint); matches != nil {
 		return matches[1], matches[2], true
 	}
 	return "", "", false
 }
 
-func parseKubeletBlockDevicePath(mountPoint string) (podUID, pvName string, ok bool) {
+func parseKubeletBlockDevicePath(mountPoint string) (podUID, pvcName string, ok bool) {
 	if matches := kubeletBlockDeviceRe.FindStringSubmatch(mountPoint); matches != nil {
 		return matches[2], matches[1], true
 	}

@@ -15,6 +15,7 @@ type Config struct {
 	ListenAddress string
 	LogLevel      string
 	NodeName      string
+	Namespaces    string
 	Boundaries    []float64
 	BoundariesNs  []int64
 
@@ -24,7 +25,6 @@ type Config struct {
 	QMPConcurrency  int
 	QMPTimeout      time.Duration
 	QMPCRISocket    string
-	QMPNamespaces   string
 	QMPLabelFilter  string
 
 	// eBPF subsystem
@@ -47,6 +47,7 @@ func Parse() *Config {
 	flag.StringVar(&c.ListenAddress, "listen-address", envOrDefault("LISTEN_ADDRESS", ":8080"), "Address to listen on for metrics")
 	flag.StringVar(&c.LogLevel, "log-level", envOrDefault("LOG_LEVEL", "info"), "Log level (debug, info, warn, error)")
 	flag.StringVar(&boundariesStr, "boundaries", envOrDefault("BOUNDARIES", "10000000,100000000,1000000000"), "Histogram bucket boundaries in nanoseconds (comma-separated)")
+	flag.StringVar(&c.Namespaces, "namespaces", envOrDefault("NAMESPACES", ""), "Comma-separated list of namespaces to monitor (empty = all)")
 
 	// QMP flags
 	flag.BoolVar(&c.EnableQMP, "enable-qmp", envBoolOrDefault("ENABLE_QMP", true), "Enable QMP-based VM storage latency collection")
@@ -54,7 +55,6 @@ func Parse() *Config {
 	flag.IntVar(&c.QMPConcurrency, "qmp-concurrency", envIntOrDefault("QMP_CONCURRENCY", 8), "Max concurrent QMP operations")
 	flag.DurationVar(&c.QMPTimeout, "qmp-timeout", envDurationOrDefault("QMP_TIMEOUT", 5*time.Second), "Timeout for individual QMP operations")
 	flag.StringVar(&c.QMPCRISocket, "qmp-cri-socket", envOrDefault("QMP_CRI_SOCKET", "/run/crio/crio.sock"), "CRI-O socket path")
-	flag.StringVar(&c.QMPNamespaces, "qmp-namespaces", envOrDefault("QMP_NAMESPACES", ""), "Comma-separated list of namespaces to monitor (empty = all)")
 	flag.StringVar(&c.QMPLabelFilter, "qmp-label-filter", envOrDefault("QMP_LABEL_FILTER", ""), "Additional label selector for virt-launcher pods")
 
 	// eBPF flags

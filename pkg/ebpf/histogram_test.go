@@ -133,3 +133,31 @@ func TestCustomBuckets(t *testing.T) {
 		}
 	}
 }
+
+func TestNamespaceAllowed(t *testing.T) {
+	tests := []struct {
+		name       string
+		namespaces []string
+		ns         string
+		want       bool
+	}{
+		{"empty filter allows all", nil, "anything", true},
+		{"empty filter allows empty ns", nil, "", true},
+		{"matching namespace allowed", []string{"default", "production"}, "default", true},
+		{"non-matching namespace denied", []string{"default", "production"}, "staging", false},
+		{"empty ns denied when filter set", []string{"default"}, "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nsFilter := make(map[string]bool, len(tt.namespaces))
+			for _, ns := range tt.namespaces {
+				nsFilter[ns] = true
+			}
+			c := &Collector{namespaces: nsFilter}
+			if got := c.namespaceAllowed(tt.ns); got != tt.want {
+				t.Errorf("namespaceAllowed(%q) = %v, want %v", tt.ns, got, tt.want)
+			}
+		})
+	}
+}

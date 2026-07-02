@@ -5,30 +5,31 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/tools/cache"
 )
 
 var (
 	latencyDesc = prometheus.NewDesc(
 		"kubevirt_storage_qmp_io_latency_seconds",
 		"Block I/O latency histogram for KubeVirt VMI disks via QMP",
-		[]string{"namespace", "vmi", "node", "drive", "operation"},
+		[]string{"namespace", "vmi", "node", "drive", "operation", "persistentvolumeclaim"},
 		nil,
 	)
 
 	scrapeErrorsDesc = prometheus.NewDesc(
-		"kubevirt_storage_scrape_errors_total",
+		"kubevirt_storage_qmp_scrape_errors_total",
 		"Total number of errors encountered during QMP scrape cycles",
 		nil, nil,
 	)
 
 	lastPollDesc = prometheus.NewDesc(
-		"kubevirt_storage_last_poll_timestamp_seconds",
+		"kubevirt_storage_qmp_last_poll_timestamp_seconds",
 		"Unix timestamp of the last successful QMP poll cycle",
 		nil, nil,
 	)
@@ -43,6 +44,7 @@ type VMIResult struct {
 
 type DeviceResult struct {
 	DiskAlias string
+	PVC       string
 	Stats     BlockStats
 }
 
@@ -63,6 +65,7 @@ type vmConnection struct {
 	vmi       string
 	podName   string
 	armed     map[string]bool
+	pvcMap    map[string]string // drive alias → PVC name
 	closed    bool
 }
 
@@ -77,7 +80,7 @@ func (vc *vmConnection) close() {
 
 type Collector struct {
 	cfg       PollerConfig
-	clientset kubernetes.Interface
+	podStore  cache.Store
 	criClient *CRIClient
 	log       *slog.Logger
 
@@ -90,10 +93,10 @@ type Collector struct {
 	connections map[string]*vmConnection
 }
 
-func NewCollector(cfg PollerConfig, cs kubernetes.Interface, criClient *CRIClient, log *slog.Logger) *Collector {
+func NewCollector(cfg PollerConfig, podStore cache.Store, criClient *CRIClient, log *slog.Logger) *Collector {
 	return &Collector{
 		cfg:         cfg,
-		clientset:   cs,
+		podStore:    podStore,
 		criClient:   criClient,
 		log:         log,
 		connections: make(map[string]*vmConnection),
@@ -169,7 +172,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 				h, err := prometheus.NewConstHistogram(
 					latencyDesc,
 					count, sum, buckets,
-					vmi.Namespace, vmi.VMI, vmi.Node, dev.DiskAlias, op,
+					vmi.Namespace, vmi.VMI, vmi.Node, dev.DiskAlias, op, dev.PVC,
 				)
 				if err != nil {
 					continue
@@ -194,51 +197,68 @@ func ConvertBuckets(hist *LatencyHist) (map[float64]uint64, uint64) {
 	return buckets, cumulative
 }
 
-func (c *Collector) buildLabelSelector() string {
-	sel := "kubevirt.io=virt-launcher"
-	if c.cfg.LabelFilter != "" {
-		sel += "," + c.cfg.LabelFilter
+func matchesLabelFilter(labels map[string]string, filter string) bool {
+	for _, part := range strings.Split(filter, ",") {
+		kv := strings.SplitN(strings.TrimSpace(part), "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		if labels[kv[0]] != kv[1] {
+			return false
+		}
 	}
-	return sel
+	return true
 }
 
 func (c *Collector) poll(ctx context.Context) {
 	c.log.Info("qmp: starting poll cycle")
 
-	namespaces := c.cfg.Namespaces
-	if len(namespaces) == 0 {
-		namespaces = []string{""}
-	}
-
 	type podInfo struct {
 		namespace string
 		podName   string
 		vmiName   string
+		pvcMap    map[string]string
 	}
 
 	var allPods []podInfo
-	labelSelector := c.buildLabelSelector()
+	nsFilter := make(map[string]bool, len(c.cfg.Namespaces))
+	for _, ns := range c.cfg.Namespaces {
+		nsFilter[ns] = true
+	}
 
-	for _, ns := range namespaces {
-		pods, err := c.clientset.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
-			LabelSelector: labelSelector,
-			FieldSelector: fmt.Sprintf("spec.nodeName=%s,status.phase=Running", c.cfg.NodeName),
-		})
-		if err != nil {
-			c.log.Error("qmp: listing pods", "namespace", ns, "error", err)
+	for _, obj := range c.podStore.List() {
+		pod, ok := obj.(*corev1.Pod)
+		if !ok {
 			continue
 		}
-		for _, pod := range pods.Items {
-			vmiName := pod.Labels["vm.kubevirt.io/name"]
-			if vmiName == "" {
-				continue
-			}
-			allPods = append(allPods, podInfo{
-				namespace: pod.Namespace,
-				podName:   pod.Name,
-				vmiName:   vmiName,
-			})
+		if pod.Status.Phase != corev1.PodRunning {
+			continue
 		}
+		if pod.Labels["kubevirt.io"] != "virt-launcher" {
+			continue
+		}
+		if c.cfg.LabelFilter != "" && !matchesLabelFilter(pod.Labels, c.cfg.LabelFilter) {
+			continue
+		}
+		if len(nsFilter) > 0 && !nsFilter[pod.Namespace] {
+			continue
+		}
+		vmiName := pod.Labels["vm.kubevirt.io/name"]
+		if vmiName == "" {
+			continue
+		}
+		pvcMap := make(map[string]string)
+		for _, vol := range pod.Spec.Volumes {
+			if vol.PersistentVolumeClaim != nil {
+				pvcMap[vol.Name] = vol.PersistentVolumeClaim.ClaimName
+			}
+		}
+		allPods = append(allPods, podInfo{
+			namespace: pod.Namespace,
+			podName:   pod.Name,
+			vmiName:   vmiName,
+			pvcMap:    pvcMap,
+		})
 	}
 
 	c.log.Info("qmp: found virt-launcher pods", "count", len(allPods))
@@ -291,7 +311,7 @@ func (c *Collector) poll(ctx context.Context) {
 			continue
 		}
 
-		conn, err := c.connectVM(t.namespace, t.vmiName, t.podName, info.PID)
+		conn, err := c.connectVM(t.namespace, t.vmiName, t.podName, info.PID, t.pvcMap)
 		if err != nil {
 			c.log.Error("qmp: connecting to VM", "namespace", t.namespace, "vmi", t.vmiName, "error", err)
 			continue
@@ -356,7 +376,7 @@ func (c *Collector) poll(ctx context.Context) {
 	c.log.Info("qmp: poll cycle complete", "vms", len(results), "errors", scrapeErrors)
 }
 
-func (c *Collector) connectVM(ns, vmi, podName string, pid int) (*vmConnection, error) {
+func (c *Collector) connectVM(ns, vmi, podName string, pid int, pvcMap map[string]string) (*vmConnection, error) {
 	sockPath := fmt.Sprintf("/proc/%d/root/run/libvirt/virtqemud-sock", pid)
 	if _, err := os.Stat(sockPath); err != nil {
 		return nil, fmt.Errorf("virtqemud socket not found at %s: %w", sockPath, err)
@@ -375,6 +395,7 @@ func (c *Collector) connectVM(ns, vmi, podName string, pid int) (*vmConnection, 
 		vmi:       vmi,
 		podName:   podName,
 		armed:     make(map[string]bool),
+		pvcMap:    pvcMap,
 	}, nil
 }
 
@@ -427,6 +448,7 @@ func (c *Collector) scrapeVM(ctx context.Context, conn *vmConnection) (*VMIResul
 		}
 		devices = append(devices, DeviceResult{
 			DiskAlias: alias,
+			PVC:       conn.pvcMap[alias],
 			Stats:     dev.Stats,
 		})
 	}

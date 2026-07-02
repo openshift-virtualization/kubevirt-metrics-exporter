@@ -335,3 +335,30 @@ func containsString(s, substr string) bool {
 	}
 	return false
 }
+
+var _ = Describe("matchesLabelFilter", func() {
+	It("should match when all labels present", func() {
+		labels := map[string]string{"app": "myapp", "env": "prod"}
+		Expect(matchesLabelFilter(labels, "app=myapp,env=prod")).To(BeTrue())
+	})
+
+	It("should match single label", func() {
+		labels := map[string]string{"app": "myapp", "env": "prod"}
+		Expect(matchesLabelFilter(labels, "app=myapp")).To(BeTrue())
+	})
+
+	It("should not match when label value differs", func() {
+		labels := map[string]string{"app": "myapp", "env": "staging"}
+		Expect(matchesLabelFilter(labels, "env=prod")).To(BeFalse())
+	})
+
+	It("should not match when label missing", func() {
+		labels := map[string]string{"app": "myapp"}
+		Expect(matchesLabelFilter(labels, "env=prod")).To(BeFalse())
+	})
+
+	It("should match empty filter", func() {
+		labels := map[string]string{"app": "myapp"}
+		Expect(matchesLabelFilter(labels, "")).To(BeTrue())
+	})
+})

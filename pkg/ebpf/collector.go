@@ -12,7 +12,7 @@ var (
 	podBlockDesc = prometheus.NewDesc(
 		"kubevirt_storage_block_io_latency_seconds",
 		"Histogram of block I/O latency in seconds, attributed to a pod volume",
-		[]string{"node", "persistentvolume", "pod_uid", "operation"},
+		[]string{"node", "namespace", "persistentvolumeclaim", "pod", "operation"},
 		nil,
 	)
 	systemBlockDesc = prometheus.NewDesc(
@@ -24,13 +24,13 @@ var (
 	nfsDesc = prometheus.NewDesc(
 		"kubevirt_storage_nfs_io_latency_seconds",
 		"Histogram of NFS I/O latency in seconds",
-		[]string{"node", "persistentvolume", "pod_uid", "operation"},
+		[]string{"node", "namespace", "persistentvolumeclaim", "pod", "operation"},
 		nil,
 	)
 	nfsVfsDesc = prometheus.NewDesc(
 		"kubevirt_storage_nfs_vfs_latency_seconds",
 		"Histogram of NFS VFS call latency in seconds (kprobe-based)",
-		[]string{"node", "persistentvolume", "pod_uid", "operation"},
+		[]string{"node", "namespace", "persistentvolumeclaim", "pod", "operation"},
 		nil,
 	)
 	subsystemDesc = prometheus.NewDesc(
@@ -51,13 +51,18 @@ type Collector struct {
 	resolver        *device.Resolver
 	nodeName        string
 	buckets         []float64
+	namespaces      map[string]bool
 	blockActive     bool
 	nfsActive       bool
 	nfsKprobeActive bool
 	log             *slog.Logger
 }
 
-func NewCollector(programs *Programs, resolver *device.Resolver, nodeName string, buckets []float64, log *slog.Logger) *Collector {
+func NewCollector(programs *Programs, resolver *device.Resolver, nodeName string, buckets []float64, namespaces []string, log *slog.Logger) *Collector {
+	nsFilter := make(map[string]bool, len(namespaces))
+	for _, ns := range namespaces {
+		nsFilter[ns] = true
+	}
 	return &Collector{
 		blockHists:      programs.BlockHists,
 		nfsHists:        programs.NfsHists,
@@ -68,8 +73,13 @@ func NewCollector(programs *Programs, resolver *device.Resolver, nodeName string
 		resolver:        resolver,
 		nodeName:        nodeName,
 		buckets:         buckets,
+		namespaces:      nsFilter,
 		log:             log,
 	}
+}
+
+func (c *Collector) namespaceAllowed(ns string) bool {
+	return len(c.namespaces) == 0 || c.namespaces[ns]
 }
 
 func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
@@ -145,10 +155,13 @@ func (c *Collector) collectBlock(ch chan<- prometheus.Metric) {
 
 		info, resolved := c.resolver.Lookup(key.Dev)
 		if resolved {
+			if !c.namespaceAllowed(info.Namespace) {
+				continue
+			}
 			m, err := prometheus.NewConstHistogram(
 				podBlockDesc,
 				count, sum, buckets,
-				c.nodeName, info.PVName, info.PodUID, opLabels[key.Op],
+				c.nodeName, info.Namespace, info.PVCName, info.PodName, opLabels[key.Op],
 			)
 			if err != nil {
 				c.log.Error("creating block histogram metric", "error", err)
@@ -190,17 +203,22 @@ func (c *Collector) collectNFS(ch chan<- prometheus.Metric) {
 		}
 
 		info, resolved := c.resolver.Lookup(key.Dev)
-		pv := ""
-		podUID := ""
+		ns := ""
+		pvc := ""
+		podName := ""
 		if resolved {
-			pv = info.PVName
-			podUID = info.PodUID
+			if !c.namespaceAllowed(info.Namespace) {
+				continue
+			}
+			ns = info.Namespace
+			pvc = info.PVCName
+			podName = info.PodName
 		}
 
 		m, err := prometheus.NewConstHistogram(
 			nfsDesc,
 			count, sum, buckets,
-			c.nodeName, pv, podUID, opLabels[key.Op],
+			c.nodeName, ns, pvc, podName, opLabels[key.Op],
 		)
 		if err != nil {
 			c.log.Error("creating NFS histogram metric", "error", err)
@@ -229,17 +247,22 @@ func (c *Collector) collectNFSKprobe(ch chan<- prometheus.Metric) {
 		}
 
 		info, resolved := c.resolver.Lookup(key.Dev)
-		pv := ""
-		podUID := ""
+		ns := ""
+		pvc := ""
+		podName := ""
 		if resolved {
-			pv = info.PVName
-			podUID = info.PodUID
+			if !c.namespaceAllowed(info.Namespace) {
+				continue
+			}
+			ns = info.Namespace
+			pvc = info.PVCName
+			podName = info.PodName
 		}
 
 		m, err := prometheus.NewConstHistogram(
 			nfsVfsDesc,
 			count, sum, buckets,
-			c.nodeName, pv, podUID, nfsVfsOpLabels[key.Op],
+			c.nodeName, ns, pvc, podName, nfsVfsOpLabels[key.Op],
 		)
 		if err != nil {
 			c.log.Error("creating NFS VFS histogram metric", "error", err)

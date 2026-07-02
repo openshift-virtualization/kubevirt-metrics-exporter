@@ -15,6 +15,19 @@ patches:
   target:
     kind: Namespace
     name: kubevirt-storage-latency-exporter
+- patch: |
+    apiVersion: apps/v1
+    kind: DaemonSet
+    metadata:
+      name: kubevirt-storage-latency-exporter
+    spec:
+      template:
+        spec:
+          nodeSelector:
+            node-role.kubernetes.io/worker: ""
+  target:
+    kind: DaemonSet
+    name: kubevirt-storage-latency-exporter
 images:
 - name: ghcr.io/openshift-virtualization/kubevirt-storage-latency-exporter
   newName: ghcr.io/mhenriks/kubevirt-storage-latency-exporter

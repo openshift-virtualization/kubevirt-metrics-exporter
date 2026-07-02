@@ -3,7 +3,7 @@
 A Prometheus exporter that monitors storage I/O latency for OpenShift Virtualization workloads. It runs as a DaemonSet and combines two collection methods in a single container:
 
 - **QMP subsystem** — connects to each VM's QEMU Monitor Protocol to collect per-disk read/write/flush latency histograms directly from the hypervisor
-- **eBPF subsystem** — attaches kernel tracepoints and kprobes to capture block and NFS I/O latency across the node, correlated to Kubernetes pods and PersistentVolumes
+- **eBPF subsystem** — attaches kernel tracepoints and kprobes to capture block and NFS I/O latency across the node, correlated to Kubernetes pods and PersistentVolumeClaims
 
 Both subsystems are independently enabled/disabled and degrade gracefully if one fails to start.
 
@@ -15,18 +15,18 @@ All metrics are exported under the `kubevirt_storage_*` prefix.
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `kubevirt_storage_qmp_io_latency_seconds` | histogram | namespace, vmi, node, drive, operation | Per-disk I/O latency for KubeVirt VMs |
-| `kubevirt_storage_scrape_errors_total` | counter | | Errors during QMP poll cycles |
-| `kubevirt_storage_last_poll_timestamp_seconds` | gauge | | Unix timestamp of last QMP poll |
+| `kubevirt_storage_qmp_io_latency_seconds` | histogram | namespace, vmi, node, drive, operation, persistentvolumeclaim | Per-disk I/O latency for KubeVirt VMs |
+| `kubevirt_storage_qmp_scrape_errors_total` | counter | | Errors during QMP poll cycles |
+| `kubevirt_storage_qmp_last_poll_timestamp_seconds` | gauge | | Unix timestamp of last QMP poll |
 
 ### eBPF metrics
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `kubevirt_storage_block_io_latency_seconds` | histogram | node, persistentvolume, pod_uid, operation | Block I/O latency attributed to pod volumes |
+| `kubevirt_storage_block_io_latency_seconds` | histogram | node, namespace, persistentvolumeclaim, pod, operation | Block I/O latency attributed to pod volumes |
 | `kubevirt_storage_system_block_io_latency_seconds` | histogram | node, device, operation | Block I/O latency for system/unresolved devices |
-| `kubevirt_storage_nfs_io_latency_seconds` | histogram | node, persistentvolume, pod_uid, operation | NFS I/O latency (tracepoint-based) |
-| `kubevirt_storage_nfs_vfs_latency_seconds` | histogram | node, persistentvolume, pod_uid, operation | NFS VFS call latency (kprobe-based) |
+| `kubevirt_storage_nfs_io_latency_seconds` | histogram | node, namespace, persistentvolumeclaim, pod, operation | NFS I/O latency (tracepoint-based) |
+| `kubevirt_storage_nfs_vfs_latency_seconds` | histogram | node, namespace, persistentvolumeclaim, pod, operation | NFS VFS call latency (kprobe-based) |
 | `kubevirt_storage_subsystem_active` | gauge | subsystem | Whether an eBPF subsystem loaded successfully (1) or not (0) |
 
 ### Example PromQL
@@ -52,6 +52,7 @@ Shared flags apply to both subsystems. QMP-specific flags are prefixed with `--q
 | `--log-level` | `LOG_LEVEL` | `info` | Log level (debug, info, warn, error) |
 | `--boundaries` | `BOUNDARIES` | `10000000,100000000,1000000000` | Histogram bucket boundaries in nanoseconds |
 | | `NODE_NAME` | (required) | Node name, typically from downward API |
+| `--namespaces` | `NAMESPACES` | (all) | Comma-separated namespace filter (applies to both QMP and eBPF) |
 
 ### QMP
 
@@ -62,7 +63,6 @@ Shared flags apply to both subsystems. QMP-specific flags are prefixed with `--q
 | `--qmp-concurrency` | `QMP_CONCURRENCY` | `8` | Max parallel QMP operations |
 | `--qmp-timeout` | `QMP_TIMEOUT` | `5s` | Per-operation QMP timeout |
 | `--qmp-cri-socket` | `QMP_CRI_SOCKET` | `/run/crio/crio.sock` | CRI-O socket path |
-| `--qmp-namespaces` | `QMP_NAMESPACES` | (all) | Comma-separated namespace filter |
 | `--qmp-label-filter` | `QMP_LABEL_FILTER` | | Additional pod label selector |
 
 ### eBPF

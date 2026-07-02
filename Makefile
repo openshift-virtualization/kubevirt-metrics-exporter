@@ -1,7 +1,7 @@
 IMAGE ?= ghcr.io/openshift-virtualization/kubevirt-storage-latency-exporter
 TAG ?= latest
 
-.PHONY: generate build test image push deploy deploy-kubernetes undeploy undeploy-kubernetes clean lint fmt
+.PHONY: generate build test image push deploy deploy-kubernetes deploy-manifest deploy-manifest-kubernetes undeploy undeploy-kubernetes clean lint fmt
 
 generate:
 	go generate ./pkg/ebpf/...
@@ -26,6 +26,14 @@ deploy:
 deploy-kubernetes:
 	cd deploy/kubernetes && kustomize edit set image ghcr.io/openshift-virtualization/kubevirt-storage-latency-exporter=$(IMAGE):$(TAG)
 	kubectl apply -k deploy/kubernetes/
+
+deploy-manifest:
+	@cd deploy/openshift && kustomize edit set image ghcr.io/openshift-virtualization/kubevirt-storage-latency-exporter=$(IMAGE):$(TAG)
+	@kustomize build deploy/openshift/
+
+deploy-manifest-kubernetes:
+	@cd deploy/kubernetes && kustomize edit set image ghcr.io/openshift-virtualization/kubevirt-storage-latency-exporter=$(IMAGE):$(TAG)
+	@kustomize build deploy/kubernetes/
 
 undeploy:
 	oc delete -k deploy/openshift/ --ignore-not-found

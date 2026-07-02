@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../base
+patches:
+- patch: |
+    - op: add
+      path: /spec/template/spec/containers/0/env/-
+      value:
+        name: QMP_CRI_SOCKET
+        value: /run/containerd/containerd.sock
+    - op: replace
+      path: /spec/template/spec/containers/0/volumeMounts/0/mountPath
+      value: /run/containerd/containerd.sock
+    - op: replace
+      path: /spec/template/spec/volumes/0/hostPath/path
+      value: /run/containerd/containerd.sock
+  target:
+    kind: DaemonSet
+    name: kubevirt-storage-latency-exporter
+images:
+- name: ghcr.io/openshift-virtualization/kubevirt-storage-latency-exporter
+  newName: localhost/kubevirt-storage-latency-exporter
+  newTag: e2e

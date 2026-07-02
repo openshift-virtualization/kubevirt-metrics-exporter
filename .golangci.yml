@@ -4,7 +4,7 @@ linters:
     rules:
       - linters:
           - errcheck
-        text: "Error return value of .*(Close|Disconnect|SetDeadline|Shutdown|Fprint).*is not checked"
+        text: "Error return value of .*(Close|Disconnect|SetDeadline|Shutdown|Fprint|Kill|Wait|Add|AddIndexers).*is not checked"
       - linters:
           - staticcheck
         text: "SA1019.*grpc\\.(DialContext|WithBlock)"

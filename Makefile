@@ -1,7 +1,7 @@
 IMAGE ?= ghcr.io/openshift-virtualization/kubevirt-storage-latency-exporter
 TAG ?= latest
 
-.PHONY: generate build test image push deploy deploy-kubernetes deploy-manifest deploy-manifest-kubernetes undeploy undeploy-kubernetes clean lint fmt
+.PHONY: generate build test image push deploy deploy-kubernetes deploy-manifest deploy-manifest-kubernetes undeploy undeploy-kubernetes setup-test-e2e test-e2e cleanup-test-e2e clean lint fmt
 
 generate:
 	go generate ./pkg/ebpf/...
@@ -40,6 +40,15 @@ undeploy:
 
 undeploy-kubernetes:
 	kubectl delete -k deploy/kubernetes/ --ignore-not-found
+
+setup-test-e2e:
+	hack/e2e-setup.sh
+
+test-e2e:
+	go test ./test/e2e/... -v -ginkgo.v -tags=e2e -timeout 15m
+
+cleanup-test-e2e:
+	hack/e2e-teardown.sh
 
 clean:
 	rm -rf bin/

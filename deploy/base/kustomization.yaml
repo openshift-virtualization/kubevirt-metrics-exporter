@@ -6,4 +6,3 @@ resources:
   - clusterrole.yaml
   - clusterrolebinding.yaml
   - daemonset.yaml
-  - podmonitor.yaml

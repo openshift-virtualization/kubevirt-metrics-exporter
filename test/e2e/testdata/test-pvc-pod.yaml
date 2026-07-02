@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: e2e-test-pvc
+  namespace: e2e-test
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 64Mi
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: e2e-io-generator
+  namespace: e2e-test
+spec:
+  containers:
+    - name: io
+      image: busybox
+      command: ["sh", "-c", "while true; do dd if=/dev/zero of=/data/testfile bs=4k count=100 conv=fsync 2>/dev/null; sleep 1; done"]
+      volumeMounts:
+        - name: data
+          mountPath: /data
+  volumes:
+    - name: data
+      persistentVolumeClaim:
+        claimName: e2e-test-pvc

@@ -1,0 +1,44 @@
+name: E2E Tests
+on:
+  push:
+    branches: ["main", "release-*"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install Kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Setup e2e cluster
+        run: make setup-test-e2e
+
+      - name: Run e2e tests
+        run: make test-e2e
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          echo "=== Exporter pods ==="
+          kubectl get pods -n kubevirt-storage-latency-exporter -o wide || true
+          echo "=== Exporter logs ==="
+          kubectl logs -n kubevirt-storage-latency-exporter -l app=kubevirt-storage-latency-exporter --tail=100 || true
+          echo "=== Test namespace ==="
+          kubectl get all -n e2e-test || true
+          echo "=== Events ==="
+          kubectl get events -n kubevirt-storage-latency-exporter --sort-by='.lastTimestamp' || true
+
+      - name: Cleanup
+        if: always()
+        run: make cleanup-test-e2e

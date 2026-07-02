@@ -1,0 +1,487 @@
+apiVersion: perses.dev/v1alpha2
+kind: PersesDashboard
+metadata:
+  name: kubevirt-storage-latency-exporter
+  namespace: kubevirt-storage-latency-exporter
+  labels:
+    app: kubevirt-storage-latency-exporter
+spec:
+  config:
+    display:
+      name: KubeVirt Storage Latency
+      description: Storage I/O latency from QMP and eBPF subsystems
+    duration: 1h
+    refreshInterval: 30s
+
+    variables:
+      - kind: ListVariable
+        spec:
+          name: node
+          display:
+            name: Node
+          allowAllValue: true
+          allowMultiple: true
+          plugin:
+            kind: PrometheusLabelValuesVariable
+            spec:
+              datasource:
+                kind: PrometheusDatasource
+                name: cluster-monitoring
+              labelName: node
+              matchers:
+                - "kubevirt_storage_qmp_io_latency_seconds_count{}"
+
+      - kind: ListVariable
+        spec:
+          name: vmi
+          display:
+            name: VMI
+          allowAllValue: true
+          allowMultiple: true
+          plugin:
+            kind: PrometheusLabelValuesVariable
+            spec:
+              datasource:
+                kind: PrometheusDatasource
+                name: cluster-monitoring
+              labelName: vmi
+              matchers:
+                - 'kubevirt_storage_qmp_io_latency_seconds_count{node=~"$node"}'
+
+      - kind: ListVariable
+        spec:
+          name: persistentvolume
+          display:
+            name: Volume
+          allowAllValue: true
+          allowMultiple: true
+          plugin:
+            kind: PrometheusLabelValuesVariable
+            spec:
+              datasource:
+                kind: PrometheusDatasource
+                name: cluster-monitoring
+              labelName: persistentvolume
+              matchers:
+                - 'kubevirt_storage_block_io_latency_seconds_count{node=~"$node"}'
+
+      - kind: ListVariable
+        spec:
+          name: operation
+          display:
+            name: Operation
+          allowAllValue: true
+          allowMultiple: true
+          plugin:
+            kind: StaticListVariable
+            spec:
+              values:
+                - read
+                - write
+                - flush
+                - discard
+                - open
+                - getattr
+
+    panels:
+      qmp_quantiles:
+        kind: Panel
+        spec:
+          display:
+            name: QMP VM Disk Latency
+          plugin:
+            kind: TimeSeriesChart
+            spec:
+              yAxis:
+                format:
+                  unit: seconds
+              legend:
+                position: bottom
+                mode: table
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'histogram_quantile(0.5, sum(rate(kubevirt_storage_qmp_io_latency_seconds_bucket{node=~"$node", vmi=~"$vmi", operation=~"$operation"}[$__rate_interval])) by (le))'
+                    minStep: "30s"
+                    seriesNameFormat: p50
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'histogram_quantile(0.9, sum(rate(kubevirt_storage_qmp_io_latency_seconds_bucket{node=~"$node", vmi=~"$vmi", operation=~"$operation"}[$__rate_interval])) by (le))'
+                    minStep: "30s"
+                    seriesNameFormat: p90
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'histogram_quantile(0.99, sum(rate(kubevirt_storage_qmp_io_latency_seconds_bucket{node=~"$node", vmi=~"$vmi", operation=~"$operation"}[$__rate_interval])) by (le))'
+                    minStep: "30s"
+                    seriesNameFormat: p99
+
+      status_block:
+        kind: Panel
+        spec:
+          display:
+            name: Block Subsystem
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'max(kubevirt_storage_subsystem_active{subsystem="block"})'
+
+      status_nfs:
+        kind: Panel
+        spec:
+          display:
+            name: NFS Subsystem
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'max(kubevirt_storage_subsystem_active{subsystem="nfs"})'
+
+      status_nfs_kprobe:
+        kind: Panel
+        spec:
+          display:
+            name: NFS Kprobe Subsystem
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'max(kubevirt_storage_subsystem_active{subsystem="nfs_kprobe"})'
+
+      block_quantiles:
+        kind: Panel
+        spec:
+          display:
+            name: Block I/O Latency (Pod Volumes)
+          plugin:
+            kind: TimeSeriesChart
+            spec:
+              yAxis:
+                format:
+                  unit: seconds
+              legend:
+                position: bottom
+                mode: table
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'histogram_quantile(0.5, sum(rate(kubevirt_storage_block_io_latency_seconds_bucket{node=~"$node", persistentvolume=~"$persistentvolume", operation=~"$operation"}[$__rate_interval])) by (le))'
+                    minStep: "30s"
+                    seriesNameFormat: p50
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'histogram_quantile(0.9, sum(rate(kubevirt_storage_block_io_latency_seconds_bucket{node=~"$node", persistentvolume=~"$persistentvolume", operation=~"$operation"}[$__rate_interval])) by (le))'
+                    minStep: "30s"
+                    seriesNameFormat: p90
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'histogram_quantile(0.99, sum(rate(kubevirt_storage_block_io_latency_seconds_bucket{node=~"$node", persistentvolume=~"$persistentvolume", operation=~"$operation"}[$__rate_interval])) by (le))'
+                    minStep: "30s"
+                    seriesNameFormat: p99
+
+      system_block_quantiles:
+        kind: Panel
+        spec:
+          display:
+            name: Block I/O Latency (System Devices)
+          plugin:
+            kind: TimeSeriesChart
+            spec:
+              yAxis:
+                format:
+                  unit: seconds
+              legend:
+                position: bottom
+                mode: table
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'histogram_quantile(0.5, sum(rate(kubevirt_storage_system_block_io_latency_seconds_bucket{node=~"$node", operation=~"$operation"}[$__rate_interval])) by (le))'
+                    minStep: "30s"
+                    seriesNameFormat: p50
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'histogram_quantile(0.9, sum(rate(kubevirt_storage_system_block_io_latency_seconds_bucket{node=~"$node", operation=~"$operation"}[$__rate_interval])) by (le))'
+                    minStep: "30s"
+                    seriesNameFormat: p90
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'histogram_quantile(0.99, sum(rate(kubevirt_storage_system_block_io_latency_seconds_bucket{node=~"$node", operation=~"$operation"}[$__rate_interval])) by (le))'
+                    minStep: "30s"
+                    seriesNameFormat: p99
+
+      nfs_quantiles:
+        kind: Panel
+        spec:
+          display:
+            name: NFS I/O Latency (Tracepoint)
+          plugin:
+            kind: TimeSeriesChart
+            spec:
+              yAxis:
+                format:
+                  unit: seconds
+              legend:
+                position: bottom
+                mode: table
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'histogram_quantile(0.5, sum(rate(kubevirt_storage_nfs_io_latency_seconds_bucket{node=~"$node", persistentvolume=~"$persistentvolume", operation=~"$operation"}[$__rate_interval])) by (le))'
+                    minStep: "30s"
+                    seriesNameFormat: p50
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'histogram_quantile(0.9, sum(rate(kubevirt_storage_nfs_io_latency_seconds_bucket{node=~"$node", persistentvolume=~"$persistentvolume", operation=~"$operation"}[$__rate_interval])) by (le))'
+                    minStep: "30s"
+                    seriesNameFormat: p90
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'histogram_quantile(0.99, sum(rate(kubevirt_storage_nfs_io_latency_seconds_bucket{node=~"$node", persistentvolume=~"$persistentvolume", operation=~"$operation"}[$__rate_interval])) by (le))'
+                    minStep: "30s"
+                    seriesNameFormat: p99
+
+      nfs_vfs_quantiles:
+        kind: Panel
+        spec:
+          display:
+            name: NFS VFS Latency (Kprobe)
+          plugin:
+            kind: TimeSeriesChart
+            spec:
+              yAxis:
+                format:
+                  unit: seconds
+              legend:
+                position: bottom
+                mode: table
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'histogram_quantile(0.5, sum(rate(kubevirt_storage_nfs_vfs_latency_seconds_bucket{node=~"$node", persistentvolume=~"$persistentvolume", operation=~"$operation"}[$__rate_interval])) by (le))'
+                    minStep: "30s"
+                    seriesNameFormat: p50
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'histogram_quantile(0.9, sum(rate(kubevirt_storage_nfs_vfs_latency_seconds_bucket{node=~"$node", persistentvolume=~"$persistentvolume", operation=~"$operation"}[$__rate_interval])) by (le))'
+                    minStep: "30s"
+                    seriesNameFormat: p90
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: cluster-monitoring
+                    query: 'histogram_quantile(0.99, sum(rate(kubevirt_storage_nfs_vfs_latency_seconds_bucket{node=~"$node", persistentvolume=~"$persistentvolume", operation=~"$operation"}[$__rate_interval])) by (le))'
+                    minStep: "30s"
+                    seriesNameFormat: p99
+
+    layouts:
+      - kind: Grid
+        spec:
+          display:
+            title: QMP VM Disk Latency
+            collapse:
+              open: true
+          items:
+            - x: 0
+              "y": 0
+              width: 24
+              height: 8
+              content:
+                $ref: '#/spec/panels/qmp_quantiles'
+
+      - kind: Grid
+        spec:
+          display:
+            title: eBPF Subsystem Status
+            collapse:
+              open: true
+          items:
+            - x: 0
+              "y": 0
+              width: 8
+              height: 4
+              content:
+                $ref: '#/spec/panels/status_block'
+            - x: 8
+              "y": 0
+              width: 8
+              height: 4
+              content:
+                $ref: '#/spec/panels/status_nfs'
+            - x: 16
+              "y": 0
+              width: 8
+              height: 4
+              content:
+                $ref: '#/spec/panels/status_nfs_kprobe'
+
+      - kind: Grid
+        spec:
+          display:
+            title: Block I/O (Pod Volumes)
+            collapse:
+              open: true
+          items:
+            - x: 0
+              "y": 0
+              width: 24
+              height: 8
+              content:
+                $ref: '#/spec/panels/block_quantiles'
+
+      - kind: Grid
+        spec:
+          display:
+            title: Block I/O (System Devices)
+            collapse:
+              open: true
+          items:
+            - x: 0
+              "y": 0
+              width: 24
+              height: 8
+              content:
+                $ref: '#/spec/panels/system_block_quantiles'
+
+      - kind: Grid
+        spec:
+          display:
+            title: NFS I/O (Tracepoint)
+            collapse:
+              open: true
+          items:
+            - x: 0
+              "y": 0
+              width: 24
+              height: 8
+              content:
+                $ref: '#/spec/panels/nfs_quantiles'
+
+      - kind: Grid
+        spec:
+          display:
+            title: NFS VFS Latency (Kprobe)
+            collapse:
+              open: true
+          items:
+            - x: 0
+              "y": 0
+              width: 24
+              height: 8
+              content:
+                $ref: '#/spec/panels/nfs_vfs_quantiles'

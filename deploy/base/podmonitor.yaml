@@ -1,0 +1,15 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: kubevirt-storage-latency-exporter
+  namespace: kubevirt-storage-latency-exporter
+  labels:
+    app: kubevirt-storage-latency-exporter
+spec:
+  selector:
+    matchLabels:
+      app: kubevirt-storage-latency-exporter
+  podMetricsEndpoints:
+    - port: metrics
+      path: /metrics
+      interval: 30s

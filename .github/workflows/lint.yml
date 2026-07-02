@@ -1,0 +1,38 @@
+name: Lint
+on:
+  push:
+    branches: ["main", "release-*"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Install eBPF build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm libbpf-dev
+
+      - name: Generate eBPF bindings
+        run: go generate ./pkg/ebpf/...
+
+      - name: Check formatting
+        run: |
+          gofmt -s -l .
+          test -z "$(gofmt -s -l .)" || (echo "Run 'gofmt -s -w .'" && exit 1)
+
+      - name: Check go mod tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum || (echo "Run 'go mod tidy' and commit." && exit 1)
+
+      - uses: golangci/golangci-lint-action@v7
+        with:
+          version: v2.7.2

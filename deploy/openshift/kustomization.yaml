@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+- ../base
+- scc.yaml
+- scc-role.yaml
+patches:
+- patch: |
+    apiVersion: v1
+    kind: Namespace
+    metadata:
+      name: kubevirt-storage-latency-exporter
+      labels:
+        openshift.io/cluster-monitoring: "true"
+  target:
+    kind: Namespace
+    name: kubevirt-storage-latency-exporter
+images:
+- name: ghcr.io/openshift-virtualization/kubevirt-storage-latency-exporter
+  newName: ghcr.io/mhenriks/kubevirt-storage-latency-exporter
+  newTag: latest

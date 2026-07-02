@@ -1,0 +1,10 @@
+version: "2"
+linters:
+  exclusions:
+    rules:
+      - linters:
+          - errcheck
+        text: "Error return value of .*(Close|Disconnect|SetDeadline|Shutdown|Fprint).*is not checked"
+      - linters:
+          - staticcheck
+        text: "SA1019.*grpc\\.(DialContext|WithBlock)"

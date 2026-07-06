@@ -30,6 +30,6 @@ patches:
     kind: DaemonSet
     name: kubevirt-storage-latency-exporter
 images:
-- name: ghcr.io/openshift-virtualization/kubevirt-storage-latency-exporter
-  newName: ghcr.io/mhenriks/kubevirt-storage-latency-exporter
+- name: quay.io/openshift-virtualization/kubevirt-storage-latency-exporter
+  newName: quay.io/openshift-virtualization/kubevirt-storage-latency-exporter
   newTag: latest

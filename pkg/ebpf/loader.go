@@ -25,9 +25,9 @@ type Programs struct {
 	NFSActive       bool
 	NFSKprobeActive bool
 
-	retryNFS        bool
-	retryNFSKprobe  bool
-	nfsMapSize      int
+	retryNFS         bool
+	retryNFSKprobe   bool
+	nfsMapSize       int
 	nfsKprobeMapSize int
 }
 

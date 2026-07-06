@@ -1,4 +1,4 @@
-IMAGE ?= ghcr.io/openshift-virtualization/kubevirt-storage-latency-exporter
+IMAGE ?= quay.io/openshift-virtualization/kubevirt-storage-latency-exporter
 TAG ?= latest
 
 .PHONY: generate build test image push deploy deploy-kubernetes deploy-manifest deploy-manifest-kubernetes undeploy undeploy-kubernetes setup-test-e2e test-e2e cleanup-test-e2e clean lint fmt
@@ -20,19 +20,19 @@ push: image
 	podman push $(IMAGE):$(TAG)
 
 deploy:
-	cd deploy/openshift && kustomize edit set image ghcr.io/openshift-virtualization/kubevirt-storage-latency-exporter=$(IMAGE):$(TAG)
+	cd deploy/openshift && kustomize edit set image quay.io/openshift-virtualization/kubevirt-storage-latency-exporter=$(IMAGE):$(TAG)
 	oc apply -k deploy/openshift/
 
 deploy-kubernetes:
-	cd deploy/kubernetes && kustomize edit set image ghcr.io/openshift-virtualization/kubevirt-storage-latency-exporter=$(IMAGE):$(TAG)
+	cd deploy/kubernetes && kustomize edit set image quay.io/openshift-virtualization/kubevirt-storage-latency-exporter=$(IMAGE):$(TAG)
 	kubectl apply -k deploy/kubernetes/
 
 deploy-manifest:
-	@cd deploy/openshift && kustomize edit set image ghcr.io/openshift-virtualization/kubevirt-storage-latency-exporter=$(IMAGE):$(TAG)
+	@cd deploy/openshift && kustomize edit set image quay.io/openshift-virtualization/kubevirt-storage-latency-exporter=$(IMAGE):$(TAG)
 	@kustomize build deploy/openshift/
 
 deploy-manifest-kubernetes:
-	@cd deploy/kubernetes && kustomize edit set image ghcr.io/openshift-virtualization/kubevirt-storage-latency-exporter=$(IMAGE):$(TAG)
+	@cd deploy/kubernetes && kustomize edit set image quay.io/openshift-virtualization/kubevirt-storage-latency-exporter=$(IMAGE):$(TAG)
 	@kustomize build deploy/kubernetes/
 
 undeploy:

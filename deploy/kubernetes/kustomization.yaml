@@ -4,6 +4,6 @@ resources:
 - ../base
 - ../podmonitor
 images:
-- name: ghcr.io/openshift-virtualization/kubevirt-storage-latency-exporter
+- name: quay.io/openshift-virtualization/kubevirt-storage-latency-exporter
   newName: localhost/kubevirt-storage-latency-exporter
   newTag: e2e

@@ -32,7 +32,7 @@ fi
 
 echo "=== Deploying exporter ==="
 cd deploy/e2e
-kustomize edit set image "ghcr.io/openshift-virtualization/kubevirt-storage-latency-exporter=${IMAGE}"
+kustomize edit set image "quay.io/openshift-virtualization/kubevirt-storage-latency-exporter=${IMAGE}"
 cd ../..
 kubectl apply -k deploy/e2e/
 

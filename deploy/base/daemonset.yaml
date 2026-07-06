@@ -24,7 +24,7 @@ spec:
         - operator: Exists
       containers:
         - name: exporter
-          image: ghcr.io/openshift-virtualization/kubevirt-storage-latency-exporter:latest
+          image: quay.io/openshift-virtualization/kubevirt-storage-latency-exporter:latest
           env:
             - name: NODE_NAME
               valueFrom:

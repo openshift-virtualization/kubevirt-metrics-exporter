@@ -75,7 +75,7 @@ func WaitForPodRunning(name, namespace string, timeout time.Duration) error {
 
 func GetExporterPodName(namespace string) (string, error) {
 	out, err := Kubectl("get", "pods", "-n", namespace,
-		"-l", "app=kubevirt-storage-latency-exporter",
+		"-l", "app=kubevirt-metrics-exporter",
 		"-o", "jsonpath={.items[0].metadata.name}")
 	if err != nil {
 		return "", fmt.Errorf("getting exporter pod: %w", err)

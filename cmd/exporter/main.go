@@ -19,10 +19,10 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 
-	"github.com/openshift-virtualization/kubevirt-storage-latency-exporter/pkg/config"
-	"github.com/openshift-virtualization/kubevirt-storage-latency-exporter/pkg/device"
-	bpf "github.com/openshift-virtualization/kubevirt-storage-latency-exporter/pkg/ebpf"
-	"github.com/openshift-virtualization/kubevirt-storage-latency-exporter/pkg/qmp"
+	"github.com/openshift-virtualization/kubevirt-metrics-exporter/pkg/config"
+	"github.com/openshift-virtualization/kubevirt-metrics-exporter/pkg/device"
+	bpf "github.com/openshift-virtualization/kubevirt-metrics-exporter/pkg/ebpf"
+	"github.com/openshift-virtualization/kubevirt-metrics-exporter/pkg/qmp"
 )
 
 func main() {
@@ -34,7 +34,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	slog.Info("starting kubevirt-storage-latency-exporter",
+	slog.Info("starting kubevirt-metrics-exporter",
 		"node", cfg.NodeName,
 		"qmp", cfg.EnableQMP,
 		"ebpf", cfg.EnableEBPF,

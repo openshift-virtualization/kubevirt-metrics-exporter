@@ -89,25 +89,25 @@ make image        # builds container image with podman
 To build and push a custom image:
 
 ```bash
-make push IMAGE=quay.io/myuser/kubevirt-storage-latency-exporter TAG=v0.1.0
+make push IMAGE=quay.io/myuser/kubevirt-metrics-exporter TAG=v0.1.0
 ```
 
 ## Deploying
 
 ### From a release
 
-Download the install manifest from the [latest release](https://github.com/openshift-virtualization/kubevirt-storage-latency-exporter/releases/latest):
+Download the install manifest from the [latest release](https://github.com/openshift-virtualization/kubevirt-metrics-exporter/releases/latest):
 
 OpenShift:
 
 ```bash
-oc apply -f https://github.com/openshift-virtualization/kubevirt-storage-latency-exporter/releases/latest/download/install-openshift.yaml
+oc apply -f https://github.com/openshift-virtualization/kubevirt-metrics-exporter/releases/latest/download/install-openshift.yaml
 ```
 
 Kubernetes:
 
 ```bash
-kubectl apply -f https://github.com/openshift-virtualization/kubevirt-storage-latency-exporter/releases/latest/download/install-kubernetes.yaml
+kubectl apply -f https://github.com/openshift-virtualization/kubevirt-metrics-exporter/releases/latest/download/install-kubernetes.yaml
 ```
 
 ### From source
@@ -127,7 +127,7 @@ make deploy-kubernetes
 To deploy with a custom image:
 
 ```bash
-make deploy IMAGE=quay.io/myuser/kubevirt-storage-latency-exporter TAG=v0.1.0
+make deploy IMAGE=quay.io/myuser/kubevirt-metrics-exporter TAG=v0.1.0
 ```
 
 The OpenShift variant includes SecurityContextConstraints, worker node selector, and PodMonitor for Prometheus scraping.

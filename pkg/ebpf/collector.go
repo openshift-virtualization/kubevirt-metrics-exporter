@@ -3,7 +3,7 @@ package ebpf
 import (
 	"log/slog"
 
-	"github.com/openshift-virtualization/kubevirt-storage-latency-exporter/pkg/device"
+	"github.com/openshift-virtualization/kubevirt-metrics-exporter/pkg/device"
 	"github.com/prometheus/client_golang/prometheus"
 )
 

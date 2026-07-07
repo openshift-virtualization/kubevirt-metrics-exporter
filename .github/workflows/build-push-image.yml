@@ -5,7 +5,7 @@ on:
     tags: ["v*"]
 
 env:
-  IMAGE: quay.io/openshift-virtualization/kubevirt-storage-latency-exporter
+  IMAGE: quay.io/openshift-virtualization/kubevirt-metrics-exporter
 
 jobs:
   build-push:

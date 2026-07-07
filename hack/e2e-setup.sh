@@ -2,8 +2,8 @@
 set -euo pipefail
 
 CLUSTER_NAME="${CLUSTER_NAME:-storage-latency-e2e}"
-IMAGE="localhost/kubevirt-storage-latency-exporter:e2e"
-NAMESPACE="kubevirt-storage-latency-exporter"
+IMAGE="localhost/kubevirt-metrics-exporter:e2e"
+NAMESPACE="kubevirt-metrics-exporter"
 
 echo "=== Creating Kind cluster ==="
 if kind get clusters 2>/dev/null | grep -q "^${CLUSTER_NAME}$"; then
@@ -32,12 +32,12 @@ fi
 
 echo "=== Deploying exporter ==="
 cd deploy/e2e
-kustomize edit set image "quay.io/openshift-virtualization/kubevirt-storage-latency-exporter=${IMAGE}"
+kustomize edit set image "quay.io/openshift-virtualization/kubevirt-metrics-exporter=${IMAGE}"
 cd ../..
 kubectl apply -k deploy/e2e/
 
 echo "=== Waiting for DaemonSet rollout ==="
-kubectl -n "${NAMESPACE}" rollout status daemonset/kubevirt-storage-latency-exporter --timeout=120s
+kubectl -n "${NAMESPACE}" rollout status daemonset/kubevirt-metrics-exporter --timeout=120s
 
 echo "=== Setup complete ==="
 kubectl -n "${NAMESPACE}" get pods

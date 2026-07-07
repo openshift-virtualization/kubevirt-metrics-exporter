@@ -1,14 +1,14 @@
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
-  name: kubevirt-storage-latency-exporter
-  namespace: kubevirt-storage-latency-exporter
+  name: kubevirt-metrics-exporter
+  namespace: kubevirt-metrics-exporter
   labels:
-    app: kubevirt-storage-latency-exporter
+    app: kubevirt-metrics-exporter
 spec:
   selector:
     matchLabels:
-      app: kubevirt-storage-latency-exporter
+      app: kubevirt-metrics-exporter
   updateStrategy:
     type: RollingUpdate
     rollingUpdate:
@@ -16,15 +16,15 @@ spec:
   template:
     metadata:
       labels:
-        app: kubevirt-storage-latency-exporter
+        app: kubevirt-metrics-exporter
     spec:
-      serviceAccountName: kubevirt-storage-latency-exporter
+      serviceAccountName: kubevirt-metrics-exporter
       hostPID: true
       tolerations:
         - operator: Exists
       containers:
         - name: exporter
-          image: quay.io/openshift-virtualization/kubevirt-storage-latency-exporter:latest
+          image: quay.io/openshift-virtualization/kubevirt-metrics-exporter:latest
           env:
             - name: NODE_NAME
               valueFrom:

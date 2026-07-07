@@ -9,11 +9,11 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/openshift-virtualization/kubevirt-storage-latency-exporter/test/utils"
+	"github.com/openshift-virtualization/kubevirt-metrics-exporter/test/utils"
 )
 
 const (
-	exporterNamespace = "kubevirt-storage-latency-exporter"
+	exporterNamespace = "kubevirt-metrics-exporter"
 	testNamespace     = "e2e-test"
 )
 

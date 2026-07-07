@@ -1,4 +1,4 @@
-module github.com/openshift-virtualization/kubevirt-storage-latency-exporter
+module github.com/openshift-virtualization/kubevirt-metrics-exporter
 
 go 1.25.0
 

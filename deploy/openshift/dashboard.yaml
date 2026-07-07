@@ -1,10 +1,10 @@
 apiVersion: perses.dev/v1alpha2
 kind: PersesDashboard
 metadata:
-  name: kubevirt-storage-latency-exporter
-  namespace: kubevirt-storage-latency-exporter
+  name: kubevirt-metrics-exporter
+  namespace: kubevirt-metrics-exporter
   labels:
-    app: kubevirt-storage-latency-exporter
+    app: kubevirt-metrics-exporter
 spec:
   config:
     display:

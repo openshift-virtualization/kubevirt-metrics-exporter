@@ -17,8 +17,8 @@ patches:
       value: /run/containerd/containerd.sock
   target:
     kind: DaemonSet
-    name: kubevirt-storage-latency-exporter
+    name: kubevirt-metrics-exporter
 images:
-- name: quay.io/openshift-virtualization/kubevirt-storage-latency-exporter
-  newName: localhost/kubevirt-storage-latency-exporter
+- name: quay.io/openshift-virtualization/kubevirt-metrics-exporter
+  newName: localhost/kubevirt-metrics-exporter
   newTag: e2e

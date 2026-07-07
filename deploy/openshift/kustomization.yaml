@@ -10,17 +10,17 @@ patches:
     apiVersion: v1
     kind: Namespace
     metadata:
-      name: kubevirt-storage-latency-exporter
+      name: kubevirt-metrics-exporter
       labels:
         openshift.io/cluster-monitoring: "true"
   target:
     kind: Namespace
-    name: kubevirt-storage-latency-exporter
+    name: kubevirt-metrics-exporter
 - patch: |
     apiVersion: apps/v1
     kind: DaemonSet
     metadata:
-      name: kubevirt-storage-latency-exporter
+      name: kubevirt-metrics-exporter
     spec:
       template:
         spec:
@@ -28,8 +28,8 @@ patches:
             node-role.kubernetes.io/worker: ""
   target:
     kind: DaemonSet
-    name: kubevirt-storage-latency-exporter
+    name: kubevirt-metrics-exporter
 images:
-- name: quay.io/openshift-virtualization/kubevirt-storage-latency-exporter
-  newName: quay.io/openshift-virtualization/kubevirt-storage-latency-exporter
+- name: quay.io/openshift-virtualization/kubevirt-metrics-exporter
+  newName: quay.io/openshift-virtualization/kubevirt-metrics-exporter
   newTag: latest

@@ -8,7 +8,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/openshift-virtualization/kubevirt-storage-latency-exporter/test/utils"
+	"github.com/openshift-virtualization/kubevirt-metrics-exporter/test/utils"
 )
 
 var _ = Describe("Storage Latency Exporter", func() {
@@ -23,7 +23,7 @@ var _ = Describe("Storage Latency Exporter", func() {
 	Context("DaemonSet deployment", func() {
 		It("should have all pods ready", func() {
 			Expect(utils.WaitForDaemonSetReady(
-				"kubevirt-storage-latency-exporter",
+				"kubevirt-metrics-exporter",
 				exporterNamespace,
 				60*time.Second,
 			)).To(Succeed())

@@ -31,13 +31,13 @@ jobs:
         if: failure()
         run: |
           echo "=== Exporter pods ==="
-          kubectl get pods -n kubevirt-storage-latency-exporter -o wide || true
+          kubectl get pods -n kubevirt-metrics-exporter -o wide || true
           echo "=== Exporter logs ==="
-          kubectl logs -n kubevirt-storage-latency-exporter -l app=kubevirt-storage-latency-exporter --tail=100 || true
+          kubectl logs -n kubevirt-metrics-exporter -l app=kubevirt-metrics-exporter --tail=100 || true
           echo "=== Test namespace ==="
           kubectl get all -n e2e-test || true
           echo "=== Events ==="
-          kubectl get events -n kubevirt-storage-latency-exporter --sort-by='.lastTimestamp' || true
+          kubectl get events -n kubevirt-metrics-exporter --sort-by='.lastTimestamp' || true
 
       - name: Cleanup
         if: always()

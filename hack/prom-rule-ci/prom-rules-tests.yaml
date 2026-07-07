@@ -1,0 +1,285 @@
+---
+rule_files:
+  - /tmp/rules.verify
+
+tests:
+  # -----------------------------------------------------------------------
+  # CSIVolumeMultipathDegraded
+  # -----------------------------------------------------------------------
+
+  - interval: 1m
+    input_series:
+      - series: 'kube_persistentvolume_info{persistentvolume="pvc-abc",csi_volume_handle="vol-handle-1"}'
+        values: "1x17"
+      - series: 'csi_volume_node_device_info{node="node-1",volume_handle="vol-handle-1",driver="csi.example.com",device="dm-0"}'
+        values: "1x17"
+      - series: 'node_dmmultipath_device_info{sysfs_name="dm-0",device="mpathA",node="node-1",uuid="mpath-123"}'
+        values: "1x17"
+      - series: 'node_dmmultipath_path_state{device="mpathA",path="sda",node="node-1",state="offline"}'
+        values: "_ _ 1 1 1 1 1 1 1 1 _ _ _ _ _ _ _"
+
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: CSIVolumeMultipathDegraded
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: CSIVolumeMultipathDegraded
+        exp_alerts:
+          - exp_annotations:
+              summary: "PV pvc-abc on node-1 has degraded multipath (device mpathA)"
+              description: "At least one path to the multipath device has failed. Storage is still accessible via remaining paths but redundancy is lost."
+              runbook_url: "https://github.com/openshift-virtualization/kubevirt-metrics-exporter/blob/main/docs/runbooks/CSIVolumeMultipathDegraded.md"
+            exp_labels:
+              severity: warning
+              alertname: CSIVolumeMultipathDegraded
+              persistentvolume: pvc-abc
+              csi_volume_handle: "vol-handle-1"
+              volume_handle: "vol-handle-1"
+              sysfs_name: dm-0
+              node: node-1
+              device: mpathA
+              driver: csi.example.com
+      - eval_time: 16m
+        alertname: CSIVolumeMultipathDegraded
+        exp_alerts: []
+
+  # All paths healthy
+  - interval: 1m
+    input_series:
+      - series: 'kube_persistentvolume_info{persistentvolume="pvc-abc",csi_volume_handle="vol-handle-1"}'
+        values: "1x10"
+      - series: 'csi_volume_node_device_info{node="node-1",volume_handle="vol-handle-1",driver="csi.example.com",device="dm-0"}'
+        values: "1x10"
+      - series: 'node_dmmultipath_device_info{sysfs_name="dm-0",device="mpathA",node="node-1",uuid="mpath-123"}'
+        values: "1x10"
+      - series: 'node_dmmultipath_path_state{device="mpathA",path="sda",node="node-1",state="running"}'
+        values: "1x10"
+
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: CSIVolumeMultipathDegraded
+        exp_alerts: []
+
+  # Non-CSI PV (empty csi_volume_handle)
+  - interval: 1m
+    input_series:
+      - series: 'kube_persistentvolume_info{persistentvolume="pvc-nfs",csi_volume_handle=""}'
+        values: "1x10"
+      - series: 'node_dmmultipath_device_info{sysfs_name="dm-0",device="mpathA",node="node-1",uuid="mpath-123"}'
+        values: "1x10"
+      - series: 'node_dmmultipath_path_state{device="mpathA",path="sda",node="node-1",state="offline"}'
+        values: "1x10"
+
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: CSIVolumeMultipathDegraded
+        exp_alerts: []
+
+  # Offline path on different node
+  - interval: 1m
+    input_series:
+      - series: 'kube_persistentvolume_info{persistentvolume="pvc-abc",csi_volume_handle="vol-handle-1"}'
+        values: "1x10"
+      - series: 'csi_volume_node_device_info{node="node-1",volume_handle="vol-handle-1",driver="csi.example.com",device="dm-0"}'
+        values: "1x10"
+      - series: 'node_dmmultipath_device_info{sysfs_name="dm-0",device="mpathA",node="node-1",uuid="mpath-123"}'
+        values: "1x10"
+      - series: 'node_dmmultipath_path_state{device="mpathA",path="sda",node="node-2",state="offline"}'
+        values: "1x10"
+
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: CSIVolumeMultipathDegraded
+        exp_alerts: []
+
+  # -----------------------------------------------------------------------
+  # CSIVolumeMultipathLost
+  # -----------------------------------------------------------------------
+
+  - interval: 1m
+    input_series:
+      - series: 'kube_persistentvolume_info{persistentvolume="pvc-abc",csi_volume_handle="vol-handle-1"}'
+        values: "1x10"
+      - series: 'csi_volume_node_device_info{node="node-1",volume_handle="vol-handle-1",driver="csi.example.com",device="dm-0"}'
+        values: "1x10"
+      - series: 'node_dmmultipath_device_info{sysfs_name="dm-0",device="mpathA",node="node-1",uuid="mpath-123"}'
+        values: "1x10"
+      - series: 'node_dmmultipath_device_paths_active{device="mpathA",sysfs_name="dm-0",node="node-1"}'
+        values: "0x10"
+
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: CSIVolumeMultipathLost
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: CSIVolumeMultipathLost
+        exp_alerts:
+          - exp_annotations:
+              summary: "PV pvc-abc on node-1 has lost all multipath paths (device mpathA)"
+              description: "All paths to the multipath device are down. I/O is likely failing. Immediate investigation of storage connectivity on node node-1 is required."
+              runbook_url: "https://github.com/openshift-virtualization/kubevirt-metrics-exporter/blob/main/docs/runbooks/CSIVolumeMultipathLost.md"
+            exp_labels:
+              severity: critical
+              alertname: CSIVolumeMultipathLost
+              persistentvolume: pvc-abc
+              csi_volume_handle: "vol-handle-1"
+              volume_handle: "vol-handle-1"
+              sysfs_name: dm-0
+              node: node-1
+              device: mpathA
+              driver: csi.example.com
+
+  # At least one path active
+  - interval: 1m
+    input_series:
+      - series: 'kube_persistentvolume_info{persistentvolume="pvc-abc",csi_volume_handle="vol-handle-1"}'
+        values: "1x10"
+      - series: 'csi_volume_node_device_info{node="node-1",volume_handle="vol-handle-1",driver="csi.example.com",device="dm-0"}'
+        values: "1x10"
+      - series: 'node_dmmultipath_device_info{sysfs_name="dm-0",device="mpathA",node="node-1",uuid="mpath-123"}'
+        values: "1x10"
+      - series: 'node_dmmultipath_device_paths_active{device="mpathA",sysfs_name="dm-0",node="node-1"}'
+        values: "1x10"
+
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: CSIVolumeMultipathLost
+        exp_alerts: []
+
+  # -----------------------------------------------------------------------
+  # CSIVolumeNVMeSubsystemDegraded
+  # -----------------------------------------------------------------------
+
+  - interval: 1m
+    input_series:
+      - series: 'kube_persistentvolume_info{persistentvolume="pvc-nvme",csi_volume_handle="vol-nvme-1"}'
+        values: "1x12"
+      - series: 'csi_volume_node_device_info{node="node-1",volume_handle="vol-nvme-1",driver="nvme.csi.example.com",device="nvme0n1"}'
+        values: "1x12"
+      - series: 'node_nvmesubsystem_namespace_info{subsystem="nvme-subsys0",device="nvme0n1",node="node-1"}'
+        values: "1x12"
+      - series: 'node_nvmesubsystem_paths{subsystem="nvme-subsys0"}'
+        values: "2x12"
+      - series: 'node_nvmesubsystem_paths_live{subsystem="nvme-subsys0"}'
+        values: "2 2 1 1 1 1 1 1 1 1 1 1"
+
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: CSIVolumeNVMeSubsystemDegraded
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: CSIVolumeNVMeSubsystemDegraded
+        exp_alerts:
+          - exp_annotations:
+              summary: "PV pvc-nvme on node-1 has degraded NVMe-oF subsystem (nvme-subsys0)"
+              description: "At least one NVMe-oF controller path is not live. Storage is still accessible via remaining controllers but redundancy is lost."
+              runbook_url: "https://github.com/openshift-virtualization/kubevirt-metrics-exporter/blob/main/docs/runbooks/CSIVolumeNVMeSubsystemDegraded.md"
+            exp_labels:
+              severity: warning
+              alertname: CSIVolumeNVMeSubsystemDegraded
+              persistentvolume: pvc-nvme
+              csi_volume_handle: "vol-nvme-1"
+              volume_handle: "vol-nvme-1"
+              node: node-1
+              device: nvme0n1
+              driver: nvme.csi.example.com
+              subsystem: nvme-subsys0
+
+  # -----------------------------------------------------------------------
+  # CSIVolumeNVMeSubsystemLost
+  # -----------------------------------------------------------------------
+
+  - interval: 1m
+    input_series:
+      - series: 'kube_persistentvolume_info{persistentvolume="pvc-nvme",csi_volume_handle="vol-nvme-1"}'
+        values: "1x10"
+      - series: 'csi_volume_node_device_info{node="node-1",volume_handle="vol-nvme-1",driver="nvme.csi.example.com",device="nvme0n1"}'
+        values: "1x10"
+      - series: 'node_nvmesubsystem_namespace_info{subsystem="nvme-subsys0",device="nvme0n1",node="node-1"}'
+        values: "1x10"
+      - series: 'node_nvmesubsystem_paths{subsystem="nvme-subsys0"}'
+        values: "2x10"
+      - series: 'node_nvmesubsystem_paths_live{subsystem="nvme-subsys0"}'
+        values: "0x10"
+
+    alert_rule_test:
+      - eval_time: 0m
+        alertname: CSIVolumeNVMeSubsystemLost
+        exp_alerts: []
+      - eval_time: 2m
+        alertname: CSIVolumeNVMeSubsystemLost
+        exp_alerts:
+          - exp_annotations:
+              summary: "PV pvc-nvme on node-1 has lost all NVMe-oF controller paths (nvme-subsys0)"
+              description: "All NVMe-oF controller paths are dead. I/O is likely failing. Immediate investigation of storage connectivity on node node-1 is required."
+              runbook_url: "https://github.com/openshift-virtualization/kubevirt-metrics-exporter/blob/main/docs/runbooks/CSIVolumeNVMeSubsystemLost.md"
+            exp_labels:
+              severity: critical
+              alertname: CSIVolumeNVMeSubsystemLost
+              persistentvolume: pvc-nvme
+              csi_volume_handle: "vol-nvme-1"
+              volume_handle: "vol-nvme-1"
+              node: node-1
+              device: nvme0n1
+              driver: nvme.csi.example.com
+              subsystem: nvme-subsys0
+
+  # At least one controller live
+  - interval: 1m
+    input_series:
+      - series: 'kube_persistentvolume_info{persistentvolume="pvc-nvme",csi_volume_handle="vol-nvme-1"}'
+        values: "1x10"
+      - series: 'csi_volume_node_device_info{node="node-1",volume_handle="vol-nvme-1",driver="nvme.csi.example.com",device="nvme0n1"}'
+        values: "1x10"
+      - series: 'node_nvmesubsystem_namespace_info{subsystem="nvme-subsys0",device="nvme0n1",node="node-1"}'
+        values: "1x10"
+      - series: 'node_nvmesubsystem_paths{subsystem="nvme-subsys0"}'
+        values: "2x10"
+      - series: 'node_nvmesubsystem_paths_live{subsystem="nvme-subsys0"}'
+        values: "1x10"
+
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: CSIVolumeNVMeSubsystemLost
+        exp_alerts: []
+
+  # -----------------------------------------------------------------------
+  # CSIVolumeDeviceExporterDown
+  # -----------------------------------------------------------------------
+
+  # Targets scraped successfully
+  - interval: 1m
+    input_series:
+      - series: 'up{job="csi-volume-device-exporter",instance="node-1:9091"}'
+        values: "1x10"
+
+    alert_rule_test:
+      - eval_time: 6m
+        alertname: CSIVolumeDeviceExporterDown
+        exp_alerts: []
+
+  # Targets disappear then return
+  - interval: 1m
+    input_series:
+      - series: 'up{job="csi-volume-device-exporter",instance="node-1:9091"}'
+        values: "_ _ _ _ _ _ _ 1 1 1 1"
+
+    alert_rule_test:
+      - eval_time: 4m
+        alertname: CSIVolumeDeviceExporterDown
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: CSIVolumeDeviceExporterDown
+        exp_alerts:
+          - exp_annotations:
+              summary: "CSI volume device exporter is not running"
+              description: "No csi-volume-device-exporter targets have been scraped for 5 minutes. Storage path health for CSI volumes cannot be reported."
+              runbook_url: "https://github.com/openshift-virtualization/kubevirt-metrics-exporter/blob/main/docs/runbooks/CSIVolumeDeviceExporterDown.md"
+            exp_labels:
+              severity: warning
+              operator_health_impact: warning
+              alertname: CSIVolumeDeviceExporterDown
+              job: csi-volume-device-exporter
+      - eval_time: 8m
+        alertname: CSIVolumeDeviceExporterDown
+        exp_alerts: []

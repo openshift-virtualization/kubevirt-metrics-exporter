@@ -31,5 +31,5 @@ patches:
     name: kubevirt-metrics-exporter
 images:
 - name: quay.io/openshift-virtualization/kubevirt-metrics-exporter
-  newName: quay.io/openshift-virtualization/kubevirt-metrics-exporter
+  newName: ghcr.io/mhenriks/kubevirt-metrics-exporter
   newTag: latest

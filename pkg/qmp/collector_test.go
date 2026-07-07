@@ -271,7 +271,7 @@ var _ = Describe("Collector", func() {
 			var histMetrics []prometheus.Metric
 			for _, m := range metrics {
 				desc := m.Desc().String()
-				if containsString(desc, "kubevirt_storage_qmp_io_latency_seconds") {
+				if containsString(desc, "kubevirt_qmp_io_latency_seconds") {
 					histMetrics = append(histMetrics, m)
 				}
 			}

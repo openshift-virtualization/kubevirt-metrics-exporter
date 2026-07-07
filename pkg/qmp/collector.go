@@ -16,20 +16,20 @@ import (
 
 var (
 	latencyDesc = prometheus.NewDesc(
-		"kubevirt_storage_qmp_io_latency_seconds",
+		"kubevirt_qmp_io_latency_seconds",
 		"Block I/O latency histogram for KubeVirt VMI disks via QMP",
 		[]string{"namespace", "vmi", "node", "drive", "operation", "persistentvolumeclaim"},
 		nil,
 	)
 
 	scrapeErrorsDesc = prometheus.NewDesc(
-		"kubevirt_storage_qmp_scrape_errors_total",
+		"kubevirt_qmp_scrape_errors_total",
 		"Total number of errors encountered during QMP scrape cycles",
 		nil, nil,
 	)
 
 	lastPollDesc = prometheus.NewDesc(
-		"kubevirt_storage_qmp_last_poll_timestamp_seconds",
+		"kubevirt_qmp_last_poll_timestamp_seconds",
 		"Unix timestamp of the last successful QMP poll cycle",
 		nil, nil,
 	)

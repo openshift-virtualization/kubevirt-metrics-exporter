@@ -20,6 +20,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	"github.com/openshift-virtualization/kubevirt-metrics-exporter/pkg/config"
+	"github.com/openshift-virtualization/kubevirt-metrics-exporter/pkg/csi"
 	"github.com/openshift-virtualization/kubevirt-metrics-exporter/pkg/device"
 	bpf "github.com/openshift-virtualization/kubevirt-metrics-exporter/pkg/ebpf"
 	"github.com/openshift-virtualization/kubevirt-metrics-exporter/pkg/qmp"
@@ -38,6 +39,7 @@ func main() {
 		"node", cfg.NodeName,
 		"qmp", cfg.EnableQMP,
 		"ebpf", cfg.EnableEBPF,
+		"csi", cfg.EnableCSI,
 	)
 
 	log := slog.Default()
@@ -53,6 +55,10 @@ func main() {
 
 	if cfg.EnableEBPF {
 		startEBPF(ctx, cfg, stores, log)
+	}
+
+	if cfg.EnableCSI {
+		startCSI(ctx, cfg, stores.pvcIndexer, log)
 	}
 
 	mux := http.NewServeMux()
@@ -178,6 +184,22 @@ func startEBPF(ctx context.Context, cfg *config.Config, stores informerStores, l
 		"nfs", programs.NFSActive,
 		"nfsKprobe", programs.NFSKprobeActive,
 	)
+}
+
+func startCSI(ctx context.Context, cfg *config.Config, pvcIndexer cache.Indexer, log *slog.Logger) {
+	discoverers := []csi.Discoverer{
+		csi.NewTridentDiscoverer(cfg.CSIHostTridentTracking, cfg.CSIHostSys, cfg.NodeName, log),
+		csi.NewHPEDiscoverer(cfg.CSIKubeletRoot, cfg.CSIHostSys, cfg.NodeName, log),
+		csi.NewKubeletDiscoverer(cfg.CSIKubeletRoot, cfg.CSIHostSys, cfg.NodeName, log),
+	}
+
+	m := csi.NewMetrics()
+	m.Register()
+
+	collector := csi.NewCollector(discoverers, m, pvcIndexer, cfg.CSIPollInterval, log)
+	go collector.Run(ctx)
+
+	log.Info("csi: subsystem started")
 }
 
 func setupLogging(level string) {

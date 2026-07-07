@@ -35,3 +35,6 @@ jobs:
 
       - name: Test
         run: go test -v -count=1 ./...
+
+      - name: Test alert rules
+        run: CRI=docker make test-alerts

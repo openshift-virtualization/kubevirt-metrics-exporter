@@ -37,6 +37,13 @@ type Config struct {
 	EBPFNFSMapSize       int
 	EBPFNFSKprobeMapSize int
 	EBPFProcPath         string
+
+	// CSI discovery subsystem
+	EnableCSI              bool
+	CSIPollInterval        time.Duration
+	CSIKubeletRoot         string
+	CSIHostSys             string
+	CSIHostTridentTracking string
 }
 
 func Parse() *Config {
@@ -67,6 +74,13 @@ func Parse() *Config {
 	flag.IntVar(&c.EBPFNFSMapSize, "ebpf-nfs-map-size", envIntOrDefault("EBPF_NFS_MAP_SIZE", 10240), "Max entries for NFS start timestamp map")
 	flag.IntVar(&c.EBPFNFSKprobeMapSize, "ebpf-nfs-kprobe-map-size", envIntOrDefault("EBPF_NFS_KPROBE_MAP_SIZE", 10240), "Max entries for NFS kprobe start timestamp map")
 	flag.StringVar(&c.EBPFProcPath, "ebpf-proc-path", envOrDefault("EBPF_PROC_PATH", "/proc"), "Path to host proc filesystem")
+
+	// CSI flags
+	flag.BoolVar(&c.EnableCSI, "enable-csi", envBoolOrDefault("ENABLE_CSI", true), "Enable CSI volume-to-device discovery")
+	flag.DurationVar(&c.CSIPollInterval, "csi-poll-interval", envDurationOrDefault("CSI_POLL_INTERVAL", 30*time.Second), "CSI discovery poll interval")
+	flag.StringVar(&c.CSIKubeletRoot, "csi-kubelet-root", envOrDefault("CSI_KUBELET_ROOT", "/var/lib/kubelet"), "Path to kubelet root (must have mountPropagation: HostToContainer)")
+	flag.StringVar(&c.CSIHostSys, "csi-host-sys", envOrDefault("CSI_HOST_SYS", "/sys"), "Path to host /sys mount inside container")
+	flag.StringVar(&c.CSIHostTridentTracking, "csi-host-trident-tracking", envOrDefault("CSI_HOST_TRIDENT_TRACKING", "/host/trident/tracking"), "Path to host Trident tracking dir inside container")
 
 	flag.Parse()
 

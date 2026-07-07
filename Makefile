@@ -1,10 +1,13 @@
 IMAGE ?= quay.io/openshift-virtualization/kubevirt-metrics-exporter
 TAG ?= latest
 
-.PHONY: generate build test image push deploy deploy-kubernetes deploy-manifest deploy-manifest-kubernetes undeploy undeploy-kubernetes setup-test-e2e test-e2e cleanup-test-e2e clean lint fmt
+.PHONY: generate generate-rules build test test-alerts image push deploy deploy-kubernetes deploy-manifest deploy-manifest-kubernetes undeploy undeploy-kubernetes setup-test-e2e test-e2e cleanup-test-e2e clean lint fmt
 
 generate:
 	go generate ./pkg/ebpf/...
+
+generate-rules:
+	go run ./tools/generate-rules/...
 
 build: generate
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
@@ -12,6 +15,9 @@ build: generate
 
 test:
 	go test -v -count=1 ./...
+
+test-alerts:
+	hack/prom-rule-ci/verify-rules.sh
 
 image:
 	podman build -f Containerfile -t $(IMAGE):$(TAG) .

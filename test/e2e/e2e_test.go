@@ -11,7 +11,7 @@ import (
 	"github.com/openshift-virtualization/kubevirt-metrics-exporter/test/utils"
 )
 
-var _ = Describe("Storage Latency Exporter", func() {
+var _ = Describe("Metrics Exporter", func() {
 	var exporterPod string
 
 	BeforeEach(func() {

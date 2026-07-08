@@ -1,4 +1,4 @@
-# KubeVirt Storage Latency Exporter
+# KubeVirt Metrics Exporter
 
 A Prometheus exporter that monitors storage I/O latency for OpenShift Virtualization workloads. It runs as a DaemonSet and combines two collection methods in a single container:
 

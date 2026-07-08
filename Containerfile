@@ -30,7 +30,7 @@ COPY --from=builder /kubevirt-metrics-exporter /usr/local/bin/kubevirt-metrics-e
 LABEL name="kubevirt-metrics-exporter" \
       summary="Storage I/O latency exporter for OpenShift Virtualization" \
       description="Monitors VM and host storage I/O latency using QMP and eBPF, exports Prometheus metrics" \
-      io.k8s.display-name="KubeVirt Storage Latency Exporter" \
+      io.k8s.display-name="KubeVirt Metrics Exporter" \
       io.openshift.tags="kubevirt,monitoring,storage,ebpf"
 
 USER 0

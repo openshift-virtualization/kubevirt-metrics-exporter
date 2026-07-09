@@ -19,13 +19,24 @@ type Config struct {
 	Boundaries    []float64
 	BoundariesNs  []int64
 
+	// CRI (shared by QMP and QGA)
+	CRISocket string
+
 	// QMP subsystem
 	EnableQMP       bool
 	QMPPollInterval time.Duration
 	QMPConcurrency  int
 	QMPTimeout      time.Duration
-	QMPCRISocket    string
 	QMPLabelFilter  string
+
+	// QGA subsystem
+	EnableQGA       bool
+	QGAPollInterval time.Duration
+	QGATimeout      int32
+	QGAExecWait     time.Duration
+	QGARetries      int
+	QGAConcurrency  int
+	QGALabelFilter  string
 
 	// eBPF subsystem
 	EnableEBPF           bool
@@ -49,13 +60,25 @@ func Parse() *Config {
 	flag.StringVar(&boundariesStr, "boundaries", envOrDefault("BOUNDARIES", "10000000,100000000,1000000000"), "Histogram bucket boundaries in nanoseconds (comma-separated)")
 	flag.StringVar(&c.Namespaces, "namespaces", envOrDefault("NAMESPACES", ""), "Comma-separated list of namespaces to monitor (empty = all)")
 
+	// CRI socket (shared)
+	flag.StringVar(&c.CRISocket, "cri-socket", envOrDefault("CRI_SOCKET", "/run/crio/crio.sock"), "CRI socket path for container discovery")
+
 	// QMP flags
 	flag.BoolVar(&c.EnableQMP, "enable-qmp", envBoolOrDefault("ENABLE_QMP", true), "Enable QMP-based VM storage latency collection")
 	flag.DurationVar(&c.QMPPollInterval, "qmp-poll-interval", envDurationOrDefault("QMP_POLL_INTERVAL", 1*time.Minute), "Poll interval for scraping VMs")
 	flag.IntVar(&c.QMPConcurrency, "qmp-concurrency", envIntOrDefault("QMP_CONCURRENCY", 8), "Max concurrent QMP operations")
 	flag.DurationVar(&c.QMPTimeout, "qmp-timeout", envDurationOrDefault("QMP_TIMEOUT", 5*time.Second), "Timeout for individual QMP operations")
-	flag.StringVar(&c.QMPCRISocket, "qmp-cri-socket", envOrDefault("QMP_CRI_SOCKET", "/run/crio/crio.sock"), "CRI-O socket path")
 	flag.StringVar(&c.QMPLabelFilter, "qmp-label-filter", envOrDefault("QMP_LABEL_FILTER", ""), "Additional label selector for virt-launcher pods")
+
+	// QGA flags
+	flag.BoolVar(&c.EnableQGA, "enable-qga", envBoolOrDefault("ENABLE_QGA", true), "Enable QGA-based guest I/O latency collection")
+	flag.DurationVar(&c.QGAPollInterval, "qga-poll-interval", envDurationOrDefault("QGA_POLL_INTERVAL", 1*time.Minute), "Poll interval for QGA guest metrics")
+	var qgaTimeout int
+	flag.IntVar(&qgaTimeout, "qga-timeout", envIntOrDefault("QGA_TIMEOUT", 10), "Timeout in seconds for individual QGA agent commands")
+	flag.DurationVar(&c.QGAExecWait, "qga-exec-wait", envDurationOrDefault("QGA_EXEC_WAIT", 1*time.Second), "Wait time between guest-exec and guest-exec-status")
+	flag.IntVar(&c.QGARetries, "qga-retries", envIntOrDefault("QGA_RETRIES", 10), "Max consecutive failures before stopping QGA polling for a VM")
+	flag.IntVar(&c.QGAConcurrency, "qga-concurrency", envIntOrDefault("QGA_CONCURRENCY", 8), "Max concurrent QGA operations")
+	flag.StringVar(&c.QGALabelFilter, "qga-label-filter", envOrDefault("QGA_LABEL_FILTER", ""), "Additional label selector for QGA virt-launcher pods")
 
 	// eBPF flags
 	flag.BoolVar(&c.EnableEBPF, "enable-ebpf", envBoolOrDefault("ENABLE_EBPF", true), "Enable eBPF-based I/O latency collection")
@@ -71,6 +94,7 @@ func Parse() *Config {
 	flag.Parse()
 
 	c.NodeName = os.Getenv("NODE_NAME")
+	c.QGATimeout = int32(qgaTimeout)
 	c.BoundariesNs = parseBoundariesNs(boundariesStr)
 	c.Boundaries = parseBoundariesSeconds(boundariesStr)
 

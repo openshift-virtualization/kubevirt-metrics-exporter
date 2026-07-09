@@ -22,6 +22,7 @@ import (
 	"github.com/openshift-virtualization/kubevirt-metrics-exporter/pkg/config"
 	"github.com/openshift-virtualization/kubevirt-metrics-exporter/pkg/device"
 	bpf "github.com/openshift-virtualization/kubevirt-metrics-exporter/pkg/ebpf"
+	"github.com/openshift-virtualization/kubevirt-metrics-exporter/pkg/qga"
 	"github.com/openshift-virtualization/kubevirt-metrics-exporter/pkg/qmp"
 )
 
@@ -37,6 +38,7 @@ func main() {
 	slog.Info("starting kubevirt-metrics-exporter",
 		"node", cfg.NodeName,
 		"qmp", cfg.EnableQMP,
+		"qga", cfg.EnableQGA,
 		"ebpf", cfg.EnableEBPF,
 	)
 
@@ -49,6 +51,10 @@ func main() {
 
 	if cfg.EnableQMP {
 		startQMP(ctx, cfg, stores.podStore, log)
+	}
+
+	if cfg.EnableQGA {
+		startQGA(ctx, cfg, stores.podStore, log)
 	}
 
 	if cfg.EnableEBPF {
@@ -120,7 +126,7 @@ func startInformers(ctx context.Context, nodeName string, log *slog.Logger) info
 }
 
 func startQMP(ctx context.Context, cfg *config.Config, podStore cache.Store, log *slog.Logger) {
-	criClient, err := qmp.NewCRIClient(cfg.QMPCRISocket)
+	criClient, err := qmp.NewCRIClient(cfg.CRISocket)
 	if err != nil {
 		log.Error("qmp: creating CRI client", "error", err)
 		os.Exit(1)
@@ -140,6 +146,30 @@ func startQMP(ctx context.Context, cfg *config.Config, podStore cache.Store, log
 	go collector.Run(ctx)
 
 	log.Info("qmp: subsystem started")
+}
+
+func startQGA(ctx context.Context, cfg *config.Config, podStore cache.Store, log *slog.Logger) {
+	criClient, err := qmp.NewCRIClient(cfg.CRISocket)
+	if err != nil {
+		log.Error("qga: creating CRI client", "error", err)
+		os.Exit(1)
+	}
+
+	collector := qga.NewCollector(qga.CollectorConfig{
+		NodeName:     cfg.NodeName,
+		PollInterval: cfg.QGAPollInterval,
+		QGATimeout:   cfg.QGATimeout,
+		ExecWait:     cfg.QGAExecWait,
+		MaxRetries:   cfg.QGARetries,
+		Concurrency:  cfg.QGAConcurrency,
+		Namespaces:   config.ParseNamespaces(cfg.Namespaces),
+		LabelFilter:  cfg.QGALabelFilter,
+	}, podStore, criClient, log)
+
+	prometheus.MustRegister(collector)
+	go collector.Run(ctx)
+
+	log.Info("qga: subsystem started")
 }
 
 func startEBPF(ctx context.Context, cfg *config.Config, stores informerStores, log *slog.Logger) {

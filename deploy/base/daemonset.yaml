@@ -32,6 +32,10 @@ spec:
                   fieldPath: spec.nodeName
             - name: ENABLE_QMP
               value: "true"
+            - name: ENABLE_QGA
+              value: "true"
+            - name: QGA_POLL_INTERVAL
+              value: "1m"
             - name: ENABLE_EBPF
               value: "true"
             - name: ENABLE_EBPF_BLOCK

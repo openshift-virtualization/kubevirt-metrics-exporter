@@ -119,6 +119,28 @@ func (c *Client) EnableHistogram(ctx context.Context, deviceID string, boundarie
 	return err
 }
 
+func (c *Client) AgentCommand(ctx context.Context, cmd string, timeoutSec int32) (string, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return "", fmt.Errorf("client is closed")
+	}
+
+	if deadline, ok := ctx.Deadline(); ok {
+		c.conn.SetDeadline(deadline)
+		defer c.conn.SetDeadline(time.Time{})
+	}
+
+	result, err := c.lv.QEMUDomainAgentCommand(c.domain, cmd, timeoutSec, 0)
+	if err != nil {
+		return "", err
+	}
+	if len(result) == 0 {
+		return "", fmt.Errorf("empty response from guest agent")
+	}
+	return result[0], nil
+}
+
 func (c *Client) execQMP(command string, args any) (json.RawMessage, error) {
 	cmd := qmpCommand{Execute: command, Arguments: args}
 	cmdJSON, err := json.Marshal(cmd)

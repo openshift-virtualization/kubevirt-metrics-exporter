@@ -1,11 +1,12 @@
 # KubeVirt Metrics Exporter
 
-A Prometheus exporter that monitors storage I/O latency for OpenShift Virtualization workloads. It runs as a DaemonSet and combines two collection methods in a single container:
+A Prometheus exporter that monitors storage I/O latency for OpenShift Virtualization workloads. It runs as a DaemonSet and combines three collection methods in a single container:
 
 - **QMP subsystem** — connects to each VM's QEMU Monitor Protocol to collect per-disk read/write/flush latency histograms directly from the hypervisor
+- **QGA subsystem** — uses the QEMU Guest Agent to collect guest-side I/O latency and IOPS from Windows VMs via Windows Performance Counters (PDH raw counters)
 - **eBPF subsystem** — attaches kernel tracepoints and kprobes to capture block and NFS I/O latency across the node, correlated to Kubernetes pods and PersistentVolumeClaims
 
-Both subsystems are independently enabled/disabled and degrade gracefully if one fails to start.
+All three subsystems are independently enabled/disabled and degrade gracefully if one fails to start.
 
 ## Metrics
 
@@ -18,6 +19,17 @@ All metrics are exported under the `kubevirt_storage_*` prefix.
 | `kubevirt_storage_qmp_io_latency_seconds` | histogram | namespace, vmi, node, drive, operation, persistentvolumeclaim | Per-disk I/O latency for KubeVirt VMs |
 | `kubevirt_storage_qmp_scrape_errors_total` | counter | | Errors during QMP poll cycles |
 | `kubevirt_storage_qmp_last_poll_timestamp_seconds` | gauge | | Unix timestamp of last QMP poll |
+
+### QGA metrics (guest-side, Windows)
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `kubevirt_storage_guest_io_latency_avg_seconds` | gauge | namespace, vmi, node, disk, operation | Average guest-side I/O latency per disk (read/write) |
+| `kubevirt_storage_guest_io_operations_per_second` | gauge | namespace, vmi, node, disk, operation | Guest-side IOPS per disk (read/write) |
+| `kubevirt_storage_qga_scrape_errors_total` | counter | | Errors during QGA poll cycles |
+| `kubevirt_storage_qga_last_poll_timestamp_seconds` | gauge | | Unix timestamp of last QGA poll |
+
+The QGA subsystem collects raw Windows Performance Counters (`Win32_PerfRawData_PerfDisk_PhysicalDisk`) via `wmic` executed through the QEMU Guest Agent. Metrics are computed by diffing two successive counter snapshots. VMs without a guest agent (e.g., Linux) or with `guest-exec` blacklisted are automatically detected and excluded after a configurable number of retries.
 
 ### eBPF metrics
 
@@ -42,7 +54,7 @@ histogram_quantile(0.99,
 
 ## Configuration
 
-Shared flags apply to both subsystems. QMP-specific flags are prefixed with `--qmp-`, eBPF-specific with `--ebpf-`. All flags can be overridden via environment variables.
+Shared flags apply to all subsystems. QMP-specific flags are prefixed with `--qmp-`, QGA-specific with `--qga-`, eBPF-specific with `--ebpf-`. All flags can be overridden via environment variables.
 
 ### Shared
 
@@ -53,6 +65,7 @@ Shared flags apply to both subsystems. QMP-specific flags are prefixed with `--q
 | `--boundaries` | `BOUNDARIES` | `10000000,100000000,1000000000` | Histogram bucket boundaries in nanoseconds |
 | | `NODE_NAME` | (required) | Node name, typically from downward API |
 | `--namespaces` | `NAMESPACES` | (all) | Comma-separated namespace filter (applies to both QMP and eBPF) |
+| `--cri-socket` | `CRI_SOCKET` | `/run/crio/crio.sock` | CRI socket path for container discovery (shared by QMP and QGA) |
 
 ### QMP
 
@@ -62,8 +75,19 @@ Shared flags apply to both subsystems. QMP-specific flags are prefixed with `--q
 | `--qmp-poll-interval` | `QMP_POLL_INTERVAL` | `1m` | VM scrape interval |
 | `--qmp-concurrency` | `QMP_CONCURRENCY` | `8` | Max parallel QMP operations |
 | `--qmp-timeout` | `QMP_TIMEOUT` | `5s` | Per-operation QMP timeout |
-| `--qmp-cri-socket` | `QMP_CRI_SOCKET` | `/run/crio/crio.sock` | CRI-O socket path |
 | `--qmp-label-filter` | `QMP_LABEL_FILTER` | | Additional pod label selector |
+
+### QGA
+
+| Flag | Env | Default | Description |
+|------|-----|---------|-------------|
+| `--enable-qga` | `ENABLE_QGA` | `true` | Enable QGA guest-side I/O collection |
+| `--qga-poll-interval` | `QGA_POLL_INTERVAL` | `1m` | Guest metrics poll interval |
+| `--qga-timeout` | `QGA_TIMEOUT` | `10` | Per-command QGA timeout (seconds) |
+| `--qga-exec-wait` | `QGA_EXEC_WAIT` | `1s` | Wait between guest-exec and guest-exec-status |
+| `--qga-retries` | `QGA_RETRIES` | `10` | Max consecutive failures before stopping collection for a VM |
+| `--qga-concurrency` | `QGA_CONCURRENCY` | `8` | Max parallel QGA operations |
+| `--qga-label-filter` | `QGA_LABEL_FILTER` | | Additional pod label selector for QGA |
 
 ### eBPF
 
@@ -81,9 +105,10 @@ Shared flags apply to both subsystems. QMP-specific flags are prefixed with `--q
 Prerequisites: Go 1.25+, clang, llvm, libbpf-devel
 
 ```bash
-make build        # generates eBPF bindings and builds the binary
-make test         # runs all tests
-make image        # builds container image with podman
+make build        # generates eBPF bindings and builds the binary (requires clang/llvm)
+make test         # runs all tests (requires generated eBPF bindings)
+make test-unit    # runs unit tests for non-eBPF packages (works on macOS)
+make image        # builds container image with podman (includes full toolchain)
 ```
 
 To build and push a custom image:

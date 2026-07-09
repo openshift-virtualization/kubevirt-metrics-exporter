@@ -17,6 +17,8 @@ All metrics are exported under the `kubevirt_storage_*` prefix.
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
 | `kubevirt_storage_qmp_io_latency_seconds` | histogram | namespace, vmi, node, drive, operation, persistentvolumeclaim | Per-disk I/O latency for KubeVirt VMs |
+| `kubevirt_storage_virtqueue_inuse` | gauge | namespace, vmi, node, drive, persistentvolumeclaim, queue | In-flight descriptors in a virtio-blk virtqueue |
+| `kubevirt_storage_virtqueue_size` | gauge | namespace, vmi, node, drive, persistentvolumeclaim, queue | Capacity (max descriptors) of a virtio-blk virtqueue |
 | `kubevirt_storage_qmp_scrape_errors_total` | counter | | Errors during QMP poll cycles |
 | `kubevirt_storage_qmp_last_poll_timestamp_seconds` | gauge | | Unix timestamp of last QMP poll |
 
@@ -50,6 +52,11 @@ histogram_quantile(0.99,
     rate(kubevirt_storage_qmp_io_latency_seconds_bucket{operation="write"}[5m])
   )
 )
+```
+
+Virtqueue saturation per disk (ratio of in-flight descriptors to capacity):
+```promql
+kubevirt_storage_virtqueue_inuse / kubevirt_storage_virtqueue_size
 ```
 
 ## Configuration

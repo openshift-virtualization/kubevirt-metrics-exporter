@@ -141,6 +141,83 @@ func (c *Client) AgentCommand(ctx context.Context, cmd string, timeoutSec int32)
 	return result[0], nil
 }
 
+func (c *Client) QueryVirtio(ctx context.Context) ([]VirtioDevice, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return nil, fmt.Errorf("client is closed")
+	}
+
+	if deadline, ok := ctx.Deadline(); ok {
+		c.conn.SetDeadline(deadline)
+		defer c.conn.SetDeadline(time.Time{})
+	}
+
+	result, err := c.execQMP("x-query-virtio", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var devices []VirtioDevice
+	if err := json.Unmarshal(result, &devices); err != nil {
+		return nil, fmt.Errorf("parsing x-query-virtio response: %w", err)
+	}
+
+	return devices, nil
+}
+
+func (c *Client) QueryVirtioStatus(ctx context.Context, path string) (*VirtioStatus, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return nil, fmt.Errorf("client is closed")
+	}
+
+	if deadline, ok := ctx.Deadline(); ok {
+		c.conn.SetDeadline(deadline)
+		defer c.conn.SetDeadline(time.Time{})
+	}
+
+	args := map[string]any{"path": path}
+	result, err := c.execQMP("x-query-virtio-status", args)
+	if err != nil {
+		return nil, err
+	}
+
+	var status VirtioStatus
+	if err := json.Unmarshal(result, &status); err != nil {
+		return nil, fmt.Errorf("parsing x-query-virtio-status response: %w", err)
+	}
+
+	return &status, nil
+}
+
+func (c *Client) QueryVirtioQueueStatus(ctx context.Context, path string, queue int) (*VirtQueueStatus, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return nil, fmt.Errorf("client is closed")
+	}
+
+	if deadline, ok := ctx.Deadline(); ok {
+		c.conn.SetDeadline(deadline)
+		defer c.conn.SetDeadline(time.Time{})
+	}
+
+	args := map[string]any{"path": path, "queue": queue}
+	result, err := c.execQMP("x-query-virtio-queue-status", args)
+	if err != nil {
+		return nil, err
+	}
+
+	var status VirtQueueStatus
+	if err := json.Unmarshal(result, &status); err != nil {
+		return nil, fmt.Errorf("parsing x-query-virtio-queue-status response: %w", err)
+	}
+
+	return &status, nil
+}
+
 func (c *Client) execQMP(command string, args any) (json.RawMessage, error) {
 	cmd := qmpCommand{Execute: command, Arguments: args}
 	cmdJSON, err := json.Marshal(cmd)

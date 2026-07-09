@@ -7,7 +7,7 @@ patches:
     - op: add
       path: /spec/template/spec/containers/0/env/-
       value:
-        name: QMP_CRI_SOCKET
+        name: CRI_SOCKET
         value: /run/containerd/containerd.sock
     - op: replace
       path: /spec/template/spec/containers/0/volumeMounts/0/mountPath

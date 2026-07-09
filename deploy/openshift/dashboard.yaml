@@ -21,15 +21,34 @@ spec:
             name: Node
           allowAllValue: true
           allowMultiple: true
+          customAllValue: ".*"
           plugin:
             kind: PrometheusLabelValuesVariable
             spec:
               datasource:
                 kind: PrometheusDatasource
-                name: cluster-monitoring
+                name: thanos-querier
               labelName: node
               matchers:
-                - "kubevirt_vmi_storage_io_latency_seconds_count{}"
+                - "kube_node_info{}"
+
+      - kind: ListVariable
+        spec:
+          name: namespace
+          display:
+            name: Namespace
+          allowAllValue: true
+          allowMultiple: true
+          customAllValue: ".*"
+          plugin:
+            kind: PrometheusLabelValuesVariable
+            spec:
+              datasource:
+                kind: PrometheusDatasource
+                name: thanos-querier
+              labelName: namespace
+              matchers:
+                - "kube_namespace_labels{}"
 
       - kind: ListVariable
         spec:
@@ -38,15 +57,16 @@ spec:
             name: VMI
           allowAllValue: true
           allowMultiple: true
+          customAllValue: ".*"
           plugin:
             kind: PrometheusLabelValuesVariable
             spec:
               datasource:
                 kind: PrometheusDatasource
-                name: cluster-monitoring
-              labelName: vmi
+                name: thanos-querier
+              labelName: name
               matchers:
-                - 'kubevirt_vmi_storage_io_latency_seconds_count{node=~"$node"}'
+                - 'kubevirt_vmi_info{node=~"$node", namespace=~"$namespace"}'
 
       - kind: ListVariable
         spec:
@@ -55,15 +75,16 @@ spec:
             name: Volume
           allowAllValue: true
           allowMultiple: true
+          customAllValue: ".*"
           plugin:
             kind: PrometheusLabelValuesVariable
             spec:
               datasource:
                 kind: PrometheusDatasource
-                name: cluster-monitoring
+                name: thanos-querier
               labelName: persistentvolumeclaim
               matchers:
-                - 'kme_block_io_latency_seconds_count{node=~"$node"}'
+                - 'kube_persistentvolumeclaim_info{namespace=~"$namespace"}'
 
       - kind: ListVariable
         spec:
@@ -72,6 +93,7 @@ spec:
             name: Operation
           allowAllValue: true
           allowMultiple: true
+          customAllValue: ".*"
           plugin:
             kind: StaticListVariable
             spec:
@@ -83,7 +105,84 @@ spec:
                 - open
                 - getattr
 
+      - kind: ListVariable
+        spec:
+          name: interval
+          display:
+            name: Rate Interval
+          allowAllValue: false
+          allowMultiple: false
+          defaultValue: "5m"
+          plugin:
+            kind: StaticListVariable
+            spec:
+              values:
+                - "1m"
+                - "2m"
+                - "5m"
+                - "10m"
+
     panels:
+      status_block:
+        kind: Panel
+        spec:
+          display:
+            name: Block Subsystem
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: thanos-querier
+                    query: 'max(kubevirt_storage_subsystem_active{subsystem="block"})'
+
+      status_nfs:
+        kind: Panel
+        spec:
+          display:
+            name: NFS Subsystem
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: thanos-querier
+                    query: 'max(kubevirt_storage_subsystem_active{subsystem="nfs"})'
+
+      status_nfs_kprobe:
+        kind: Panel
+        spec:
+          display:
+            name: NFS Kprobe Subsystem
+          plugin:
+            kind: StatChart
+            spec:
+              calculation: last
+          queries:
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: thanos-querier
+                    query: 'max(kubevirt_storage_subsystem_active{subsystem="nfs_kprobe"})'
+
       qmp_quantiles:
         kind: Panel
         spec:
@@ -106,8 +205,8 @@ spec:
                   spec:
                     datasource:
                       kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'histogram_quantile(0.5, sum(rate(kubevirt_vmi_storage_io_latency_seconds_bucket{node=~"$node", vmi=~"$vmi", operation=~"$operation"}[$__rate_interval])) by (le))'
+                      name: thanos-querier
+                    query: 'histogram_quantile(0.5, sum by (le) (rate(kubevirt_storage_qmp_io_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", vmi=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])))'
                     minStep: "30s"
                     seriesNameFormat: p50
             - kind: TimeSeriesQuery
@@ -117,8 +216,8 @@ spec:
                   spec:
                     datasource:
                       kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'histogram_quantile(0.9, sum(rate(kubevirt_vmi_storage_io_latency_seconds_bucket{node=~"$node", vmi=~"$vmi", operation=~"$operation"}[$__rate_interval])) by (le))'
+                      name: thanos-querier
+                    query: 'histogram_quantile(0.9, sum by (le) (rate(kubevirt_storage_qmp_io_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", vmi=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])))'
                     minStep: "30s"
                     seriesNameFormat: p90
             - kind: TimeSeriesQuery
@@ -128,21 +227,10 @@ spec:
                   spec:
                     datasource:
                       kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'histogram_quantile(0.99, sum(rate(kubevirt_vmi_storage_io_latency_seconds_bucket{node=~"$node", vmi=~"$vmi", operation=~"$operation"}[$__rate_interval])) by (le))'
+                      name: thanos-querier
+                    query: 'histogram_quantile(0.99, sum by (le) (rate(kubevirt_storage_qmp_io_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", vmi=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])))'
                     minStep: "30s"
                     seriesNameFormat: p99
-
-      status_block:
-        kind: Panel
-        spec:
-          display:
-            name: Block Subsystem
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-          queries:
             - kind: TimeSeriesQuery
               spec:
                 plugin:
@@ -150,48 +238,10 @@ spec:
                   spec:
                     datasource:
                       kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'max(kme_subsystem_active{subsystem="block"})'
-
-      status_nfs:
-        kind: Panel
-        spec:
-          display:
-            name: NFS Subsystem
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-          queries:
-            - kind: TimeSeriesQuery
-              spec:
-                plugin:
-                  kind: PrometheusTimeSeriesQuery
-                  spec:
-                    datasource:
-                      kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'max(kme_subsystem_active{subsystem="nfs"})'
-
-      status_nfs_kprobe:
-        kind: Panel
-        spec:
-          display:
-            name: NFS Kprobe Subsystem
-          plugin:
-            kind: StatChart
-            spec:
-              calculation: last
-          queries:
-            - kind: TimeSeriesQuery
-              spec:
-                plugin:
-                  kind: PrometheusTimeSeriesQuery
-                  spec:
-                    datasource:
-                      kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'max(kme_subsystem_active{subsystem="nfs_kprobe"})'
+                      name: thanos-querier
+                    query: 'histogram_quantile(0.999, sum by (le) (rate(kubevirt_storage_qmp_io_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", vmi=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])))'
+                    minStep: "30s"
+                    seriesNameFormat: p99.9
 
       block_quantiles:
         kind: Panel
@@ -215,8 +265,8 @@ spec:
                   spec:
                     datasource:
                       kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'histogram_quantile(0.5, sum(rate(kme_block_io_latency_seconds_bucket{node=~"$node", persistentvolumeclaim=~"$persistentvolumeclaim", operation=~"$operation"}[$__rate_interval])) by (le))'
+                      name: thanos-querier
+                    query: 'histogram_quantile(0.5, sum by (le) (rate(kubevirt_storage_block_io_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]) * on(namespace, pod) group_left() label_replace(kubevirt_vmi_info{name=~"$vmi", node=~"$node"}, "pod", "$1", "vmi_pod", "(.*)")))'
                     minStep: "30s"
                     seriesNameFormat: p50
             - kind: TimeSeriesQuery
@@ -226,8 +276,8 @@ spec:
                   spec:
                     datasource:
                       kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'histogram_quantile(0.9, sum(rate(kme_block_io_latency_seconds_bucket{node=~"$node", persistentvolumeclaim=~"$persistentvolumeclaim", operation=~"$operation"}[$__rate_interval])) by (le))'
+                      name: thanos-querier
+                    query: 'histogram_quantile(0.9, sum by (le) (rate(kubevirt_storage_block_io_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]) * on(namespace, pod) group_left() label_replace(kubevirt_vmi_info{name=~"$vmi", node=~"$node"}, "pod", "$1", "vmi_pod", "(.*)")))'
                     minStep: "30s"
                     seriesNameFormat: p90
             - kind: TimeSeriesQuery
@@ -237,26 +287,10 @@ spec:
                   spec:
                     datasource:
                       kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'histogram_quantile(0.99, sum(rate(kme_block_io_latency_seconds_bucket{node=~"$node", persistentvolumeclaim=~"$persistentvolumeclaim", operation=~"$operation"}[$__rate_interval])) by (le))'
+                      name: thanos-querier
+                    query: 'histogram_quantile(0.99, sum by (le) (rate(kubevirt_storage_block_io_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]) * on(namespace, pod) group_left() label_replace(kubevirt_vmi_info{name=~"$vmi", node=~"$node"}, "pod", "$1", "vmi_pod", "(.*)")))'
                     minStep: "30s"
                     seriesNameFormat: p99
-
-      system_block_quantiles:
-        kind: Panel
-        spec:
-          display:
-            name: Block I/O Latency (System Devices)
-          plugin:
-            kind: TimeSeriesChart
-            spec:
-              yAxis:
-                format:
-                  unit: seconds
-              legend:
-                position: bottom
-                mode: table
-          queries:
             - kind: TimeSeriesQuery
               spec:
                 plugin:
@@ -264,32 +298,10 @@ spec:
                   spec:
                     datasource:
                       kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'histogram_quantile(0.5, sum(rate(kme_system_block_io_latency_seconds_bucket{node=~"$node", operation=~"$operation"}[$__rate_interval])) by (le))'
+                      name: thanos-querier
+                    query: 'histogram_quantile(0.999, sum by (le) (rate(kubevirt_storage_block_io_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]) * on(namespace, pod) group_left() label_replace(kubevirt_vmi_info{name=~"$vmi", node=~"$node"}, "pod", "$1", "vmi_pod", "(.*)")))'
                     minStep: "30s"
-                    seriesNameFormat: p50
-            - kind: TimeSeriesQuery
-              spec:
-                plugin:
-                  kind: PrometheusTimeSeriesQuery
-                  spec:
-                    datasource:
-                      kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'histogram_quantile(0.9, sum(rate(kme_system_block_io_latency_seconds_bucket{node=~"$node", operation=~"$operation"}[$__rate_interval])) by (le))'
-                    minStep: "30s"
-                    seriesNameFormat: p90
-            - kind: TimeSeriesQuery
-              spec:
-                plugin:
-                  kind: PrometheusTimeSeriesQuery
-                  spec:
-                    datasource:
-                      kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'histogram_quantile(0.99, sum(rate(kme_system_block_io_latency_seconds_bucket{node=~"$node", operation=~"$operation"}[$__rate_interval])) by (le))'
-                    minStep: "30s"
-                    seriesNameFormat: p99
+                    seriesNameFormat: p99.9
 
       nfs_quantiles:
         kind: Panel
@@ -313,8 +325,8 @@ spec:
                   spec:
                     datasource:
                       kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'histogram_quantile(0.5, sum(rate(kme_nfs_io_latency_seconds_bucket{node=~"$node", persistentvolumeclaim=~"$persistentvolumeclaim", operation=~"$operation"}[$__rate_interval])) by (le))'
+                      name: thanos-querier
+                    query: 'histogram_quantile(0.5, sum by (le) (rate(kubevirt_storage_nfs_io_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]) * on(namespace, pod) group_left() label_replace(kubevirt_vmi_info{name=~"$vmi", node=~"$node"}, "pod", "$1", "vmi_pod", "(.*)")))'
                     minStep: "30s"
                     seriesNameFormat: p50
             - kind: TimeSeriesQuery
@@ -324,8 +336,8 @@ spec:
                   spec:
                     datasource:
                       kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'histogram_quantile(0.9, sum(rate(kme_nfs_io_latency_seconds_bucket{node=~"$node", persistentvolumeclaim=~"$persistentvolumeclaim", operation=~"$operation"}[$__rate_interval])) by (le))'
+                      name: thanos-querier
+                    query: 'histogram_quantile(0.9, sum by (le) (rate(kubevirt_storage_nfs_io_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]) * on(namespace, pod) group_left() label_replace(kubevirt_vmi_info{name=~"$vmi", node=~"$node"}, "pod", "$1", "vmi_pod", "(.*)")))'
                     minStep: "30s"
                     seriesNameFormat: p90
             - kind: TimeSeriesQuery
@@ -335,10 +347,21 @@ spec:
                   spec:
                     datasource:
                       kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'histogram_quantile(0.99, sum(rate(kme_nfs_io_latency_seconds_bucket{node=~"$node", persistentvolumeclaim=~"$persistentvolumeclaim", operation=~"$operation"}[$__rate_interval])) by (le))'
+                      name: thanos-querier
+                    query: 'histogram_quantile(0.99, sum by (le) (rate(kubevirt_storage_nfs_io_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]) * on(namespace, pod) group_left() label_replace(kubevirt_vmi_info{name=~"$vmi", node=~"$node"}, "pod", "$1", "vmi_pod", "(.*)")))'
                     minStep: "30s"
                     seriesNameFormat: p99
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: thanos-querier
+                    query: 'histogram_quantile(0.999, sum by (le) (rate(kubevirt_storage_nfs_io_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]) * on(namespace, pod) group_left() label_replace(kubevirt_vmi_info{name=~"$vmi", node=~"$node"}, "pod", "$1", "vmi_pod", "(.*)")))'
+                    minStep: "30s"
+                    seriesNameFormat: p99.9
 
       nfs_vfs_quantiles:
         kind: Panel
@@ -362,8 +385,8 @@ spec:
                   spec:
                     datasource:
                       kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'histogram_quantile(0.5, sum(rate(kme_nfs_vfs_latency_seconds_bucket{node=~"$node", persistentvolumeclaim=~"$persistentvolumeclaim", operation=~"$operation"}[$__rate_interval])) by (le))'
+                      name: thanos-querier
+                    query: 'histogram_quantile(0.5, sum by (le) (rate(kubevirt_storage_nfs_vfs_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]) * on(namespace, pod) group_left() label_replace(kubevirt_vmi_info{name=~"$vmi", node=~"$node"}, "pod", "$1", "vmi_pod", "(.*)")))'
                     minStep: "30s"
                     seriesNameFormat: p50
             - kind: TimeSeriesQuery
@@ -373,8 +396,8 @@ spec:
                   spec:
                     datasource:
                       kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'histogram_quantile(0.9, sum(rate(kme_nfs_vfs_latency_seconds_bucket{node=~"$node", persistentvolumeclaim=~"$persistentvolumeclaim", operation=~"$operation"}[$__rate_interval])) by (le))'
+                      name: thanos-querier
+                    query: 'histogram_quantile(0.9, sum by (le) (rate(kubevirt_storage_nfs_vfs_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]) * on(namespace, pod) group_left() label_replace(kubevirt_vmi_info{name=~"$vmi", node=~"$node"}, "pod", "$1", "vmi_pod", "(.*)")))'
                     minStep: "30s"
                     seriesNameFormat: p90
             - kind: TimeSeriesQuery
@@ -384,26 +407,23 @@ spec:
                   spec:
                     datasource:
                       kind: PrometheusDatasource
-                      name: cluster-monitoring
-                    query: 'histogram_quantile(0.99, sum(rate(kme_nfs_vfs_latency_seconds_bucket{node=~"$node", persistentvolumeclaim=~"$persistentvolumeclaim", operation=~"$operation"}[$__rate_interval])) by (le))'
+                      name: thanos-querier
+                    query: 'histogram_quantile(0.99, sum by (le) (rate(kubevirt_storage_nfs_vfs_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]) * on(namespace, pod) group_left() label_replace(kubevirt_vmi_info{name=~"$vmi", node=~"$node"}, "pod", "$1", "vmi_pod", "(.*)")))'
                     minStep: "30s"
                     seriesNameFormat: p99
+            - kind: TimeSeriesQuery
+              spec:
+                plugin:
+                  kind: PrometheusTimeSeriesQuery
+                  spec:
+                    datasource:
+                      kind: PrometheusDatasource
+                      name: thanos-querier
+                    query: 'histogram_quantile(0.999, sum by (le) (rate(kubevirt_storage_nfs_vfs_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]) * on(namespace, pod) group_left() label_replace(kubevirt_vmi_info{name=~"$vmi", node=~"$node"}, "pod", "$1", "vmi_pod", "(.*)")))'
+                    minStep: "30s"
+                    seriesNameFormat: p99.9
 
     layouts:
-      - kind: Grid
-        spec:
-          display:
-            title: QMP VM Disk Latency
-            collapse:
-              open: true
-          items:
-            - x: 0
-              "y": 0
-              width: 24
-              height: 8
-              content:
-                $ref: '#/spec/panels/qmp_quantiles'
-
       - kind: Grid
         spec:
           display:
@@ -433,6 +453,20 @@ spec:
       - kind: Grid
         spec:
           display:
+            title: QMP VM Disk Latency
+            collapse:
+              open: true
+          items:
+            - x: 0
+              "y": 0
+              width: 24
+              height: 8
+              content:
+                $ref: '#/spec/panels/qmp_quantiles'
+
+      - kind: Grid
+        spec:
+          display:
             title: Block I/O (Pod Volumes)
             collapse:
               open: true
@@ -443,20 +477,6 @@ spec:
               height: 8
               content:
                 $ref: '#/spec/panels/block_quantiles'
-
-      - kind: Grid
-        spec:
-          display:
-            title: Block I/O (System Devices)
-            collapse:
-              open: true
-          items:
-            - x: 0
-              "y": 0
-              width: 24
-              height: 8
-              content:
-                $ref: '#/spec/panels/system_block_quantiles'
 
       - kind: Grid
         spec:

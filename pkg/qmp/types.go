@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strings"
 )
 
 var (
@@ -68,4 +69,25 @@ func ExtractDiskInfo(qdev string) (string, string, bool) {
 
 func HasHistograms(dev *BlockDevice) bool {
 	return dev.Stats.RdLatencyHistogram != nil
+}
+
+type VirtioDevice struct {
+	Path string `json:"path"`
+	Name string `json:"name"`
+}
+
+type VirtioStatus struct {
+	Name   string `json:"name"`
+	NumVqs int    `json:"num-vqs"`
+}
+
+type VirtQueueStatus struct {
+	Name     string `json:"name"`
+	QueueIdx int    `json:"queue-index"`
+	Inuse    uint32 `json:"inuse"`
+	VringNum uint32 `json:"vring-num"`
+}
+
+func IsVirtioBlk(dev *VirtioDevice) bool {
+	return strings.HasPrefix(dev.Name, "virtio-blk")
 }

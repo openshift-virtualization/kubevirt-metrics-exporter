@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,19 +34,42 @@ var (
 		"Unix timestamp of the last successful QMP poll cycle",
 		nil, nil,
 	)
+
+	virtqueueInuseDesc = prometheus.NewDesc(
+		"kubevirt_storage_virtqueue_inuse",
+		"Number of in-flight descriptors in a virtio-blk virtqueue",
+		[]string{"namespace", "vmi", "node", "drive", "persistentvolumeclaim", "queue"},
+		nil,
+	)
+
+	virtqueueSizeDesc = prometheus.NewDesc(
+		"kubevirt_storage_virtqueue_size",
+		"Maximum number of descriptors (capacity) of a virtio-blk virtqueue",
+		[]string{"namespace", "vmi", "node", "drive", "persistentvolumeclaim", "queue"},
+		nil,
+	)
 )
 
 type VMIResult struct {
-	Namespace string
-	VMI       string
-	Node      string
-	Devices   []DeviceResult
+	Namespace  string
+	VMI        string
+	Node       string
+	Devices    []DeviceResult
+	Virtqueues []VirtqueueResult
 }
 
 type DeviceResult struct {
 	DiskAlias string
 	PVC       string
 	Stats     BlockStats
+}
+
+type VirtqueueResult struct {
+	DiskAlias string
+	PVC       string
+	Queue     int
+	Inuse     uint32
+	VringNum  uint32
 }
 
 type PollerConfig struct {
@@ -65,6 +89,7 @@ type vmConnection struct {
 	vmi       string
 	podName   string
 	armed     map[string]bool
+	numQueues map[string]int    // device path → number of virtqueues (cached)
 	pvcMap    map[string]string // drive alias → PVC name
 	closed    bool
 }
@@ -140,6 +165,8 @@ func (c *Collector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- latencyDesc
 	ch <- scrapeErrorsDesc
 	ch <- lastPollDesc
+	ch <- virtqueueInuseDesc
+	ch <- virtqueueSizeDesc
 }
 
 func (c *Collector) Collect(ch chan<- prometheus.Metric) {
@@ -179,6 +206,14 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 				}
 				ch <- h
 			}
+		}
+
+		for _, vq := range vmi.Virtqueues {
+			queueLabel := strconv.Itoa(vq.Queue)
+			ch <- prometheus.MustNewConstMetric(virtqueueInuseDesc, prometheus.GaugeValue, float64(vq.Inuse),
+				vmi.Namespace, vmi.VMI, vmi.Node, vq.DiskAlias, vq.PVC, queueLabel)
+			ch <- prometheus.MustNewConstMetric(virtqueueSizeDesc, prometheus.GaugeValue, float64(vq.VringNum),
+				vmi.Namespace, vmi.VMI, vmi.Node, vq.DiskAlias, vq.PVC, queueLabel)
 		}
 	}
 }
@@ -395,6 +430,7 @@ func (c *Collector) connectVM(ns, vmi, podName string, pid int, pvcMap map[strin
 		vmi:       vmi,
 		podName:   podName,
 		armed:     make(map[string]bool),
+		numQueues: make(map[string]int),
 		pvcMap:    pvcMap,
 	}, nil
 }
@@ -453,10 +489,61 @@ func (c *Collector) scrapeVM(ctx context.Context, conn *vmConnection) (*VMIResul
 		})
 	}
 
+	var virtqueues []VirtqueueResult
+	listCtx, listCancel := context.WithTimeout(ctx, c.cfg.QMPTimeout)
+	virtioDevices, err := conn.client.QueryVirtio(listCtx)
+	listCancel()
+	if err != nil {
+		c.log.Warn("qmp: x-query-virtio not available, skipping virtqueue metrics", "vmi", conn.vmi, "error", err)
+	} else {
+		for _, vdev := range virtioDevices {
+			if !IsVirtioBlk(&vdev) {
+				continue
+			}
+			alias, _, ok := ExtractDiskInfo(vdev.Path)
+			if !ok {
+				continue
+			}
+
+			nq, cached := conn.numQueues[vdev.Path]
+			if !cached {
+				statusCtx, statusCancel := context.WithTimeout(ctx, c.cfg.QMPTimeout)
+				vs, err := conn.client.QueryVirtioStatus(statusCtx, vdev.Path)
+				statusCancel()
+				if err != nil {
+					c.log.Warn("qmp: failed to query virtio status", "vmi", conn.vmi, "path", vdev.Path, "error", err)
+					continue
+				}
+				nq = vs.NumVqs
+				if nq > 0 {
+					conn.numQueues[vdev.Path] = nq
+				}
+			}
+
+			for qi := 0; qi < nq; qi++ {
+				qsCtx, qsCancel := context.WithTimeout(ctx, c.cfg.QMPTimeout)
+				qs, err := conn.client.QueryVirtioQueueStatus(qsCtx, vdev.Path, qi)
+				qsCancel()
+				if err != nil {
+					c.log.Warn("qmp: failed to query virtqueue status", "vmi", conn.vmi, "path", vdev.Path, "queue", qi, "error", err)
+					continue
+				}
+				virtqueues = append(virtqueues, VirtqueueResult{
+					DiskAlias: alias,
+					PVC:       conn.pvcMap[alias],
+					Queue:     qi,
+					Inuse:     qs.Inuse,
+					VringNum:  qs.VringNum,
+				})
+			}
+		}
+	}
+
 	return &VMIResult{
-		Namespace: conn.namespace,
-		VMI:       conn.vmi,
-		Node:      c.cfg.NodeName,
-		Devices:   devices,
+		Namespace:  conn.namespace,
+		VMI:        conn.vmi,
+		Node:       c.cfg.NodeName,
+		Devices:    devices,
+		Virtqueues: virtqueues,
 	}, nil
 }

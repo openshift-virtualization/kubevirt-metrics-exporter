@@ -16,9 +16,9 @@ VMI-level metrics use the `kubevirt_vmi_storage_*` prefix; exporter-scoped opera
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `kubevirt_vmi_storage_io_latency_seconds` | histogram | namespace, vmi, node, drive, operation, persistentvolumeclaim | Per-disk I/O latency for KubeVirt VMs |
-| `kubevirt_vmi_storage_queue_inuse` | gauge | namespace, vmi, node, drive, persistentvolumeclaim, queue | In-flight descriptors in a virtio-blk virtqueue |
-| `kubevirt_vmi_storage_queue_size` | gauge | namespace, vmi, node, drive, persistentvolumeclaim, queue | Capacity (max descriptors) of a virtio-blk virtqueue |
+| `kubevirt_vmi_storage_io_latency_seconds` | histogram | namespace, vmi, node, disk, persistentvolumeclaim, operation | Per-disk I/O latency for KubeVirt VMs |
+| `kubevirt_vmi_storage_queue_inuse` | gauge | namespace, vmi, node, disk, persistentvolumeclaim, queue | In-flight descriptors in a virtio-blk virtqueue |
+| `kubevirt_vmi_storage_queue_size` | gauge | namespace, vmi, node, disk, persistentvolumeclaim, queue | Capacity (max descriptors) of a virtio-blk virtqueue |
 | `kme_qmp_scrape_errors_total` | counter | | Errors during QMP poll cycles |
 | `kme_qmp_last_poll_timestamp_seconds` | gauge | | Unix timestamp of last QMP poll |
 
@@ -26,12 +26,12 @@ VMI-level metrics use the `kubevirt_vmi_storage_*` prefix; exporter-scoped opera
 
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
-| `kubevirt_vmi_storage_guest_latency_avg_seconds` | gauge | namespace, vmi, node, disk, drive, operation, persistentvolumeclaim | Average guest-side I/O latency per disk (read/write), derived via Little's Law |
-| `kubevirt_vmi_storage_guest_iops` | gauge | namespace, vmi, node, disk, drive, operation, persistentvolumeclaim | Guest-side IOPS per disk (read/write) |
+| `kubevirt_vmi_storage_guest_latency_avg_seconds` | gauge | namespace, vmi, node, disk, persistentvolumeclaim, operation, drive | Average guest-side I/O latency per disk (read/write), derived via Little's Law |
+| `kubevirt_vmi_storage_guest_iops` | gauge | namespace, vmi, node, disk, persistentvolumeclaim, operation, drive | Guest-side IOPS per disk (read/write) |
 | `kme_qga_scrape_errors_total` | counter | | Errors during QGA poll cycles |
 | `kme_qga_last_poll_timestamp_seconds` | gauge | | Unix timestamp of last QGA poll |
 
-The `disk` label contains the raw Windows PhysicalDisk name (e.g. `"1 E:"`). The `drive` and `persistentvolumeclaim` labels are populated by correlating guest disk PCI addresses (from the `guest-get-disks` QGA command) with libvirt domain XML disk aliases (`ua-<volumeName>`), then mapping volume names to PVC claim names via the virt-launcher pod spec. If disk mapping is unavailable (e.g. old guest agent), `drive` and `persistentvolumeclaim` are empty.
+The `disk` label contains the KubeVirt volume name (e.g. `rootdisk`), populated by correlating guest PCI addresses (from the `guest-get-disks` QGA command) with libvirt domain XML disk aliases (`ua-<volumeName>`). The `drive` label contains the raw Windows PhysicalDisk name (e.g. `"1 E:"`). The `persistentvolumeclaim` label is derived by mapping volume names to PVC claim names via the virt-launcher pod spec. If disk mapping is unavailable (e.g. old guest agent), `disk` and `persistentvolumeclaim` are empty.
 
 The QGA subsystem collects raw Windows Performance Counters (`Win32_PerfRawData_PerfDisk_PhysicalDisk`) via `wmic` executed through the QEMU Guest Agent. Metrics are computed by diffing two successive counter snapshots using Little's Law to derive latency from uint64 queue-length counters (avoiding uint32 overflow in the direct latency counters). VMs without a guest agent (e.g., Linux) or with `guest-exec` blacklisted are automatically detected and excluded after a configurable number of retries.
 

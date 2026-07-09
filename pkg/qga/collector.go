@@ -54,8 +54,8 @@ func (vs *vmState) close() {
 
 type enrichedDisk struct {
 	DiskMetrics
-	Drive string // KubeVirt volume name (empty if unmapped)
-	PVC   string // PVC claim name (empty if not a PVC)
+	Disk string // KubeVirt volume name (empty if unmapped)
+	PVC  string // PVC claim name (empty if not a PVC)
 }
 
 type vmiResult struct {
@@ -133,21 +133,21 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 			if disk.RdIOPS > 0 || disk.RdLatSec > 0 {
 				ch <- prometheus.MustNewConstMetric(
 					latencyAvgDesc, prometheus.GaugeValue, disk.RdLatSec,
-					vmi.Namespace, vmi.VMI, vmi.Node, disk.Name, disk.Drive, "read", disk.PVC,
+					vmi.Namespace, vmi.VMI, vmi.Node, disk.Disk, disk.PVC, "read", disk.Name,
 				)
 				ch <- prometheus.MustNewConstMetric(
 					iopsDesc, prometheus.GaugeValue, disk.RdIOPS,
-					vmi.Namespace, vmi.VMI, vmi.Node, disk.Name, disk.Drive, "read", disk.PVC,
+					vmi.Namespace, vmi.VMI, vmi.Node, disk.Disk, disk.PVC, "read", disk.Name,
 				)
 			}
 			if disk.WrIOPS > 0 || disk.WrLatSec > 0 {
 				ch <- prometheus.MustNewConstMetric(
 					latencyAvgDesc, prometheus.GaugeValue, disk.WrLatSec,
-					vmi.Namespace, vmi.VMI, vmi.Node, disk.Name, disk.Drive, "write", disk.PVC,
+					vmi.Namespace, vmi.VMI, vmi.Node, disk.Disk, disk.PVC, "write", disk.Name,
 				)
 				ch <- prometheus.MustNewConstMetric(
 					iopsDesc, prometheus.GaugeValue, disk.WrIOPS,
-					vmi.Namespace, vmi.VMI, vmi.Node, disk.Name, disk.Drive, "write", disk.PVC,
+					vmi.Namespace, vmi.VMI, vmi.Node, disk.Disk, disk.PVC, "write", disk.Name,
 				)
 			}
 		}
@@ -382,7 +382,7 @@ func (c *Collector) scrapeVM(ctx context.Context, vs *vmState) (*vmiResult, erro
 	for _, dc := range counters {
 		currSnapshot[dc.Name] = dc
 		c.log.Debug("qga: raw counters",
-			"vmi", vs.vmi, "disk", dc.Name,
+			"vmi", vs.vmi, "drive", dc.Name,
 			"rd_qlen", dc.RdQueueLen, "wr_qlen", dc.WrQueueLen,
 			"rd_ops", dc.RdOps, "wr_ops", dc.WrOps,
 			"ts", dc.Timestamp100ns)
@@ -403,14 +403,14 @@ func (c *Collector) scrapeVM(ctx context.Context, vs *vmState) (*vmiResult, erro
 				ed := enrichedDisk{DiskMetrics: m}
 				if idx, ok := ParseDiskIndex(m.Name); ok {
 					if volName, ok := vs.diskMap[idx]; ok {
-						ed.Drive = volName
+						ed.Disk = volName
 						ed.PVC = vs.pvcMap[volName]
 					}
 				}
 				disks = append(disks, ed)
 				c.log.Debug("qga: computed metrics",
-					"vmi", vs.vmi, "disk", m.Name,
-					"drive", ed.Drive, "pvc", ed.PVC,
+					"vmi", vs.vmi, "drive", m.Name,
+					"disk", ed.Disk, "pvc", ed.PVC,
 					"rd_lat_ms", m.RdLatSec*1000, "rd_iops", m.RdIOPS,
 					"wr_lat_ms", m.WrLatSec*1000, "wr_iops", m.WrIOPS,
 					"elapsed_s", m.ElapsedSec)

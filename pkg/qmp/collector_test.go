@@ -235,7 +235,7 @@ var _ = Describe("Collector", func() {
 					Node:      "node-1",
 					Devices: []DeviceResult{
 						{
-							DiskAlias: "rootdisk",
+							Disk: "rootdisk",
 							Stats: BlockStats{
 								RdTotalTimeNs:    5000000000,
 								WrTotalTimeNs:    2000000000,
@@ -291,7 +291,7 @@ var _ = Describe("Collector", func() {
 				Expect(labels).To(HaveKeyWithValue("namespace", "default"))
 				Expect(labels).To(HaveKeyWithValue("vmi", "test-vm"))
 				Expect(labels).To(HaveKeyWithValue("node", "node-1"))
-				Expect(labels).To(HaveKeyWithValue("drive", "rootdisk"))
+				Expect(labels).To(HaveKeyWithValue("disk", "rootdisk"))
 				Expect(labels).To(HaveKey("operation"))
 
 				h := d.GetHistogram()
@@ -430,8 +430,8 @@ var _ = Describe("Collector virtqueue metrics", func() {
 					VMI:       "test-vm",
 					Node:      "node-1",
 					Virtqueues: []VirtqueueResult{
-						{DiskAlias: "rootdisk", PVC: "my-pvc", Queue: 0, Inuse: 10, VringNum: 256},
-						{DiskAlias: "rootdisk", PVC: "my-pvc", Queue: 1, Inuse: 5, VringNum: 256},
+						{Disk: "rootdisk", PVC: "my-pvc", Queue: 0, Inuse: 10, VringNum: 256},
+						{Disk: "rootdisk", PVC: "my-pvc", Queue: 1, Inuse: 5, VringNum: 256},
 					},
 				},
 			}
@@ -477,7 +477,7 @@ var _ = Describe("Collector virtqueue metrics", func() {
 				Expect(labels).To(HaveKeyWithValue("namespace", "default"))
 				Expect(labels).To(HaveKeyWithValue("vmi", "test-vm"))
 				Expect(labels).To(HaveKeyWithValue("node", "node-1"))
-				Expect(labels).To(HaveKeyWithValue("drive", "rootdisk"))
+				Expect(labels).To(HaveKeyWithValue("disk", "rootdisk"))
 				Expect(labels).To(HaveKeyWithValue("persistentvolumeclaim", "my-pvc"))
 
 				switch labels["queue"] {
@@ -515,7 +515,7 @@ var _ = Describe("Collector virtqueue metrics", func() {
 				VMI:       "test-vm",
 				Node:      "node-1",
 				Virtqueues: []VirtqueueResult{
-					{DiskAlias: "rootdisk", PVC: "", Queue: 0, Inuse: 0, VringNum: 256},
+					{Disk: "rootdisk", PVC: "", Queue: 0, Inuse: 0, VringNum: 256},
 				},
 			},
 		}

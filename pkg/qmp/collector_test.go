@@ -235,7 +235,7 @@ var _ = Describe("Collector", func() {
 					Node:      "node-1",
 					Devices: []DeviceResult{
 						{
-							DiskAlias: "rootdisk",
+							Disk: "rootdisk",
 							Stats: BlockStats{
 								RdTotalTimeNs:    5000000000,
 								WrTotalTimeNs:    2000000000,
@@ -271,7 +271,7 @@ var _ = Describe("Collector", func() {
 			var histMetrics []prometheus.Metric
 			for _, m := range metrics {
 				desc := m.Desc().String()
-				if containsString(desc, "kubevirt_storage_qmp_io_latency_seconds") {
+				if containsString(desc, "kubevirt_vmi_storage_io_latency_seconds") {
 					histMetrics = append(histMetrics, m)
 				}
 			}
@@ -291,7 +291,7 @@ var _ = Describe("Collector", func() {
 				Expect(labels).To(HaveKeyWithValue("namespace", "default"))
 				Expect(labels).To(HaveKeyWithValue("vmi", "test-vm"))
 				Expect(labels).To(HaveKeyWithValue("node", "node-1"))
-				Expect(labels).To(HaveKeyWithValue("drive", "rootdisk"))
+				Expect(labels).To(HaveKeyWithValue("disk", "rootdisk"))
 				Expect(labels).To(HaveKey("operation"))
 
 				h := d.GetHistogram()
@@ -430,8 +430,8 @@ var _ = Describe("Collector virtqueue metrics", func() {
 					VMI:       "test-vm",
 					Node:      "node-1",
 					Virtqueues: []VirtqueueResult{
-						{DiskAlias: "rootdisk", PVC: "my-pvc", Queue: 0, Inuse: 10, VringNum: 256},
-						{DiskAlias: "rootdisk", PVC: "my-pvc", Queue: 1, Inuse: 5, VringNum: 256},
+						{Disk: "rootdisk", PVC: "my-pvc", Queue: 0, Inuse: 10, VringNum: 256},
+						{Disk: "rootdisk", PVC: "my-pvc", Queue: 1, Inuse: 5, VringNum: 256},
 					},
 				},
 			}
@@ -444,10 +444,10 @@ var _ = Describe("Collector virtqueue metrics", func() {
 			var inuseMetrics, sizeMetrics []prometheus.Metric
 			for _, m := range metrics {
 				desc := m.Desc().String()
-				if containsString(desc, "virtqueue_inuse") {
+				if containsString(desc, "storage_queue_inuse") {
 					inuseMetrics = append(inuseMetrics, m)
 				}
-				if containsString(desc, "virtqueue_size") {
+				if containsString(desc, "storage_queue_size") {
 					sizeMetrics = append(sizeMetrics, m)
 				}
 			}
@@ -461,7 +461,7 @@ var _ = Describe("Collector virtqueue metrics", func() {
 
 			for _, m := range metrics {
 				desc := m.Desc().String()
-				if !containsString(desc, "virtqueue_inuse") {
+				if !containsString(desc, "storage_queue_inuse") {
 					continue
 				}
 
@@ -477,7 +477,7 @@ var _ = Describe("Collector virtqueue metrics", func() {
 				Expect(labels).To(HaveKeyWithValue("namespace", "default"))
 				Expect(labels).To(HaveKeyWithValue("vmi", "test-vm"))
 				Expect(labels).To(HaveKeyWithValue("node", "node-1"))
-				Expect(labels).To(HaveKeyWithValue("drive", "rootdisk"))
+				Expect(labels).To(HaveKeyWithValue("disk", "rootdisk"))
 				Expect(labels).To(HaveKeyWithValue("persistentvolumeclaim", "my-pvc"))
 
 				switch labels["queue"] {
@@ -504,7 +504,7 @@ var _ = Describe("Collector virtqueue metrics", func() {
 		metrics := collectMetrics()
 		for _, m := range metrics {
 			desc := m.Desc().String()
-			Expect(containsString(desc, "virtqueue")).To(BeFalse())
+			Expect(containsString(desc, "storage_queue")).To(BeFalse())
 		}
 	})
 
@@ -515,7 +515,7 @@ var _ = Describe("Collector virtqueue metrics", func() {
 				VMI:       "test-vm",
 				Node:      "node-1",
 				Virtqueues: []VirtqueueResult{
-					{DiskAlias: "rootdisk", PVC: "", Queue: 0, Inuse: 0, VringNum: 256},
+					{Disk: "rootdisk", PVC: "", Queue: 0, Inuse: 0, VringNum: 256},
 				},
 			},
 		}
@@ -524,12 +524,12 @@ var _ = Describe("Collector virtqueue metrics", func() {
 		metrics := collectMetrics()
 		for _, m := range metrics {
 			desc := m.Desc().String()
-			if containsString(desc, "virtqueue_inuse") {
+			if containsString(desc, "storage_queue_inuse") {
 				d := &dto.Metric{}
 				Expect(m.Write(d)).To(Succeed())
 				Expect(d.GetGauge().GetValue()).To(Equal(0.0))
 			}
-			if containsString(desc, "virtqueue_size") {
+			if containsString(desc, "storage_queue_size") {
 				d := &dto.Metric{}
 				Expect(m.Write(d)).To(Succeed())
 				Expect(d.GetGauge().GetValue()).To(Equal(256.0))

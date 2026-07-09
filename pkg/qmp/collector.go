@@ -17,35 +17,35 @@ import (
 
 var (
 	latencyDesc = prometheus.NewDesc(
-		"kubevirt_storage_qmp_io_latency_seconds",
+		"kubevirt_vmi_storage_io_latency_seconds",
 		"Block I/O latency histogram for KubeVirt VMI disks via QMP",
-		[]string{"namespace", "vmi", "node", "drive", "operation", "persistentvolumeclaim"},
+		[]string{"namespace", "vmi", "node", "disk", "persistentvolumeclaim", "operation"},
 		nil,
 	)
 
 	scrapeErrorsDesc = prometheus.NewDesc(
-		"kubevirt_storage_qmp_scrape_errors_total",
+		"kme_qmp_scrape_errors_total",
 		"Total number of errors encountered during QMP scrape cycles",
 		nil, nil,
 	)
 
 	lastPollDesc = prometheus.NewDesc(
-		"kubevirt_storage_qmp_last_poll_timestamp_seconds",
+		"kme_qmp_last_poll_timestamp_seconds",
 		"Unix timestamp of the last successful QMP poll cycle",
 		nil, nil,
 	)
 
 	virtqueueInuseDesc = prometheus.NewDesc(
-		"kubevirt_storage_virtqueue_inuse",
+		"kubevirt_vmi_storage_queue_inuse",
 		"Number of in-flight descriptors in a virtio-blk virtqueue",
-		[]string{"namespace", "vmi", "node", "drive", "persistentvolumeclaim", "queue"},
+		[]string{"namespace", "vmi", "node", "disk", "persistentvolumeclaim", "queue"},
 		nil,
 	)
 
 	virtqueueSizeDesc = prometheus.NewDesc(
-		"kubevirt_storage_virtqueue_size",
+		"kubevirt_vmi_storage_queue_size",
 		"Maximum number of descriptors (capacity) of a virtio-blk virtqueue",
-		[]string{"namespace", "vmi", "node", "drive", "persistentvolumeclaim", "queue"},
+		[]string{"namespace", "vmi", "node", "disk", "persistentvolumeclaim", "queue"},
 		nil,
 	)
 )
@@ -59,17 +59,17 @@ type VMIResult struct {
 }
 
 type DeviceResult struct {
-	DiskAlias string
-	PVC       string
-	Stats     BlockStats
+	Disk  string
+	PVC   string
+	Stats BlockStats
 }
 
 type VirtqueueResult struct {
-	DiskAlias string
-	PVC       string
-	Queue     int
-	Inuse     uint32
-	VringNum  uint32
+	Disk     string
+	PVC      string
+	Queue    int
+	Inuse    uint32
+	VringNum uint32
 }
 
 type PollerConfig struct {
@@ -90,7 +90,7 @@ type vmConnection struct {
 	podName   string
 	armed     map[string]bool
 	numQueues map[string]int    // device path → number of virtqueues (cached)
-	pvcMap    map[string]string // drive alias → PVC name
+	pvcMap    map[string]string // disk alias → PVC name
 	closed    bool
 }
 
@@ -199,7 +199,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 				h, err := prometheus.NewConstHistogram(
 					latencyDesc,
 					count, sum, buckets,
-					vmi.Namespace, vmi.VMI, vmi.Node, dev.DiskAlias, op, dev.PVC,
+					vmi.Namespace, vmi.VMI, vmi.Node, dev.Disk, dev.PVC, op,
 				)
 				if err != nil {
 					continue
@@ -211,9 +211,9 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		for _, vq := range vmi.Virtqueues {
 			queueLabel := strconv.Itoa(vq.Queue)
 			ch <- prometheus.MustNewConstMetric(virtqueueInuseDesc, prometheus.GaugeValue, float64(vq.Inuse),
-				vmi.Namespace, vmi.VMI, vmi.Node, vq.DiskAlias, vq.PVC, queueLabel)
+				vmi.Namespace, vmi.VMI, vmi.Node, vq.Disk, vq.PVC, queueLabel)
 			ch <- prometheus.MustNewConstMetric(virtqueueSizeDesc, prometheus.GaugeValue, float64(vq.VringNum),
-				vmi.Namespace, vmi.VMI, vmi.Node, vq.DiskAlias, vq.PVC, queueLabel)
+				vmi.Namespace, vmi.VMI, vmi.Node, vq.Disk, vq.PVC, queueLabel)
 		}
 	}
 }
@@ -483,9 +483,9 @@ func (c *Collector) scrapeVM(ctx context.Context, conn *vmConnection) (*VMIResul
 			continue
 		}
 		devices = append(devices, DeviceResult{
-			DiskAlias: alias,
-			PVC:       conn.pvcMap[alias],
-			Stats:     dev.Stats,
+			Disk:  alias,
+			PVC:   conn.pvcMap[alias],
+			Stats: dev.Stats,
 		})
 	}
 
@@ -529,11 +529,11 @@ func (c *Collector) scrapeVM(ctx context.Context, conn *vmConnection) (*VMIResul
 					continue
 				}
 				virtqueues = append(virtqueues, VirtqueueResult{
-					DiskAlias: alias,
-					PVC:       conn.pvcMap[alias],
-					Queue:     qi,
-					Inuse:     qs.Inuse,
-					VringNum:  qs.VringNum,
+					Disk:     alias,
+					PVC:      conn.pvcMap[alias],
+					Queue:    qi,
+					Inuse:    qs.Inuse,
+					VringNum: qs.VringNum,
 				})
 			}
 		}

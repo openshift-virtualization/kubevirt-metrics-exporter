@@ -354,7 +354,7 @@ func (c *Collector) handleScrapeError(containerID string, vs *vmState, err error
 	}
 
 	vs.retryCount++
-	c.log.Warn("qga: scrape error",
+	c.log.Info("qga: scrape error",
 		"namespace", vs.namespace, "vmi", vs.vmi,
 		"error", err, "retries", vs.retryCount, "max", c.cfg.MaxRetries)
 

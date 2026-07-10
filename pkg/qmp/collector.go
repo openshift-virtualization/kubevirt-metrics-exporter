@@ -19,7 +19,7 @@ var (
 	latencyDesc = prometheus.NewDesc(
 		"kubevirt_vmi_storage_io_latency_seconds",
 		"Block I/O latency histogram for KubeVirt VMI disks via QMP",
-		[]string{"namespace", "vmi", "node", "disk", "persistentvolumeclaim", "operation"},
+		[]string{"namespace", "name", "node", "disk", "persistentvolumeclaim", "operation"},
 		nil,
 	)
 
@@ -38,21 +38,21 @@ var (
 	virtqueueInuseDesc = prometheus.NewDesc(
 		"kubevirt_vmi_storage_queue_inuse",
 		"Number of in-flight descriptors in a virtio-blk virtqueue",
-		[]string{"namespace", "vmi", "node", "disk", "persistentvolumeclaim", "queue"},
+		[]string{"namespace", "name", "node", "disk", "persistentvolumeclaim", "queue"},
 		nil,
 	)
 
 	virtqueueSizeDesc = prometheus.NewDesc(
 		"kubevirt_vmi_storage_queue_size",
 		"Maximum number of descriptors (capacity) of a virtio-blk virtqueue",
-		[]string{"namespace", "vmi", "node", "disk", "persistentvolumeclaim", "queue"},
+		[]string{"namespace", "name", "node", "disk", "persistentvolumeclaim", "queue"},
 		nil,
 	)
 )
 
 type VMIResult struct {
 	Namespace  string
-	VMI        string
+	Name       string
 	Node       string
 	Devices    []DeviceResult
 	Virtqueues []VirtqueueResult
@@ -199,7 +199,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 				h, err := prometheus.NewConstHistogram(
 					latencyDesc,
 					count, sum, buckets,
-					vmi.Namespace, vmi.VMI, vmi.Node, dev.Disk, dev.PVC, op,
+					vmi.Namespace, vmi.Name, vmi.Node, dev.Disk, dev.PVC, op,
 				)
 				if err != nil {
 					continue
@@ -211,9 +211,9 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		for _, vq := range vmi.Virtqueues {
 			queueLabel := strconv.Itoa(vq.Queue)
 			ch <- prometheus.MustNewConstMetric(virtqueueInuseDesc, prometheus.GaugeValue, float64(vq.Inuse),
-				vmi.Namespace, vmi.VMI, vmi.Node, vq.Disk, vq.PVC, queueLabel)
+				vmi.Namespace, vmi.Name, vmi.Node, vq.Disk, vq.PVC, queueLabel)
 			ch <- prometheus.MustNewConstMetric(virtqueueSizeDesc, prometheus.GaugeValue, float64(vq.VringNum),
-				vmi.Namespace, vmi.VMI, vmi.Node, vq.Disk, vq.PVC, queueLabel)
+				vmi.Namespace, vmi.Name, vmi.Node, vq.Disk, vq.PVC, queueLabel)
 		}
 	}
 }
@@ -541,7 +541,7 @@ func (c *Collector) scrapeVM(ctx context.Context, conn *vmConnection) (*VMIResul
 
 	return &VMIResult{
 		Namespace:  conn.namespace,
-		VMI:        conn.vmi,
+		Name:       conn.vmi,
 		Node:       c.cfg.NodeName,
 		Devices:    devices,
 		Virtqueues: virtqueues,

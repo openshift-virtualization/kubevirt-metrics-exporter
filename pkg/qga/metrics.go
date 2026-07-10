@@ -6,14 +6,14 @@ var (
 	latencyAvgDesc = prometheus.NewDesc(
 		"kubevirt_vmi_storage_guest_latency_avg_seconds",
 		"Average guest-side I/O latency per disk via QEMU Guest Agent (Windows PDH raw counters, derived via Little's Law)",
-		[]string{"namespace", "vmi", "node", "disk", "persistentvolumeclaim", "operation", "drive"},
+		[]string{"namespace", "name", "node", "disk", "persistentvolumeclaim", "operation", "drive"},
 		nil,
 	)
 
 	iopsDesc = prometheus.NewDesc(
 		"kubevirt_vmi_storage_guest_iops",
 		"Guest-side I/O operations per second per disk via QEMU Guest Agent (Windows PDH raw counters)",
-		[]string{"namespace", "vmi", "node", "disk", "persistentvolumeclaim", "operation", "drive"},
+		[]string{"namespace", "name", "node", "disk", "persistentvolumeclaim", "operation", "drive"},
 		nil,
 	)
 

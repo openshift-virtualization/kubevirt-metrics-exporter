@@ -231,7 +231,7 @@ var _ = Describe("Collector", func() {
 			results := []VMIResult{
 				{
 					Namespace: "default",
-					VMI:       "test-vm",
+					Name:      "test-vm",
 					Node:      "node-1",
 					Devices: []DeviceResult{
 						{
@@ -289,7 +289,7 @@ var _ = Describe("Collector", func() {
 				}
 
 				Expect(labels).To(HaveKeyWithValue("namespace", "default"))
-				Expect(labels).To(HaveKeyWithValue("vmi", "test-vm"))
+				Expect(labels).To(HaveKeyWithValue("name", "test-vm"))
 				Expect(labels).To(HaveKeyWithValue("node", "node-1"))
 				Expect(labels).To(HaveKeyWithValue("disk", "rootdisk"))
 				Expect(labels).To(HaveKey("operation"))
@@ -427,7 +427,7 @@ var _ = Describe("Collector virtqueue metrics", func() {
 			results := []VMIResult{
 				{
 					Namespace: "default",
-					VMI:       "test-vm",
+					Name:      "test-vm",
 					Node:      "node-1",
 					Virtqueues: []VirtqueueResult{
 						{Disk: "rootdisk", PVC: "my-pvc", Queue: 0, Inuse: 10, VringNum: 256},
@@ -475,7 +475,7 @@ var _ = Describe("Collector virtqueue metrics", func() {
 				}
 
 				Expect(labels).To(HaveKeyWithValue("namespace", "default"))
-				Expect(labels).To(HaveKeyWithValue("vmi", "test-vm"))
+				Expect(labels).To(HaveKeyWithValue("name", "test-vm"))
 				Expect(labels).To(HaveKeyWithValue("node", "node-1"))
 				Expect(labels).To(HaveKeyWithValue("disk", "rootdisk"))
 				Expect(labels).To(HaveKeyWithValue("persistentvolumeclaim", "my-pvc"))
@@ -494,7 +494,7 @@ var _ = Describe("Collector virtqueue metrics", func() {
 		results := []VMIResult{
 			{
 				Namespace:  "default",
-				VMI:        "test-vm",
+				Name:       "test-vm",
 				Node:       "node-1",
 				Virtqueues: nil,
 			},
@@ -512,7 +512,7 @@ var _ = Describe("Collector virtqueue metrics", func() {
 		results := []VMIResult{
 			{
 				Namespace: "default",
-				VMI:       "test-vm",
+				Name:      "test-vm",
 				Node:      "node-1",
 				Virtqueues: []VirtqueueResult{
 					{Disk: "rootdisk", PVC: "", Queue: 0, Inuse: 0, VringNum: 256},

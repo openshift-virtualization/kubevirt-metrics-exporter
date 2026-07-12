@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
 - ../base
 - ../podmonitor
+- ../prometheus-rules
 images:
 - name: quay.io/openshift-virtualization/kubevirt-metrics-exporter
   newName: localhost/kubevirt-metrics-exporter

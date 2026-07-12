@@ -3,6 +3,7 @@ kind: Kustomization
 resources:
 - ../base
 - ../podmonitor
+- ../prometheus-rules
 - scc.yaml
 - scc-role.yaml
 patches:

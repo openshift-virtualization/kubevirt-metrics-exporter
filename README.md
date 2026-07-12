@@ -10,6 +10,30 @@ All three subsystems are independently enabled/disabled and degrade gracefully i
 
 ## Metrics
 
+The exporter instruments several points along the I/O path from guest application to storage backend:
+
+```
+Guest application
+  │
+  ▼
+Guest OS block layer ◄──── QGA: guest-side latency & IOPS (Windows only)
+  │
+  ▼
+Virtio virtqueue ◄──────── QMP: queue_inuse / queue_size (saturation)
+  │
+  ▼
+QEMU block backend ◄────── QMP: I/O latency histogram (hypervisor-side)
+  │
+  ├──► Host block layer ◄─ eBPF block: block_rq_issue → block_rq_complete
+  │
+  └──► Host NFS client ◄── eBPF NFS: nfs_initiate_* → nfs_*_done
+         │
+         ▼
+       Storage backend
+```
+
+When diagnosing latency, compare metrics across layers: if QMP latency is high but eBPF block latency is low, the bottleneck is in the virtio/QEMU layer. If both are high, the problem is in the storage backend. If guest-side (QGA) latency is high but QMP latency is low, queuing is building up inside the guest.
+
 VMI-level metrics use the `kubevirt_vmi_storage_*` prefix; exporter-scoped operational and eBPF metrics use the `kme_*` prefix.
 
 ### QMP metrics
@@ -108,6 +132,40 @@ Shared flags apply to all subsystems. QMP-specific flags are prefixed with `--qm
 | `--enable-ebpf-nfs-kprobe` | `ENABLE_EBPF_NFS_KPROBE` | `false` | Enable NFS VFS kprobe tracing |
 | `--ebpf-scan-interval` | `EBPF_SCAN_INTERVAL` | `30` | Device-to-pod resolution interval (seconds) |
 | `--ebpf-proc-path` | `EBPF_PROC_PATH` | `/proc` | Host proc filesystem path |
+
+## Alerting
+
+Prometheus alerting rules are included in `deploy/prometheus-rules/` and deployed automatically with `make deploy` / `make deploy-kubernetes`.
+
+The rules cover two areas:
+
+**Workload health** — alerts on high storage I/O latency (hypervisor-side, guest-side, and node-side) and virtqueue saturation:
+
+| Alert | Severity | Condition |
+|-------|----------|-----------|
+| VMIStorageWriteLatencyHigh | warning | P99 write latency > 100ms for 10m |
+| VMIStorageReadLatencyHigh | warning | P99 read latency > 100ms for 10m |
+| VMIStorageFlushLatencyHigh | warning | P99 flush latency > 500ms for 15m |
+| NodeVMStorageLatencyWidespread | critical | >50% of active VMs on a node with P99 > 100ms for 10m |
+| VMIDiskSaturated | critical | Aggregate virtqueue occupancy > 90% for 5m |
+| VMIGuestStorageLatencyHigh | warning | Guest-side avg latency > 100ms for 15m |
+| PVCBlockLatencyHigh | warning | P99 block latency > 100ms for 10m |
+| PVCNFSLatencyHigh | warning | P99 NFS latency > 250ms for 10m |
+
+**Exporter health** — alerts when the exporter itself is unhealthy or producing stale data:
+
+| Alert | Severity | Condition |
+|-------|----------|-----------|
+| KMEQMPPollStale | warning | QMP poll > 5 min stale |
+| KMEQGAPollStale | warning | QGA poll > 5 min stale |
+| KMEQMPScrapeErrors | warning | Sustained QMP errors for 15m |
+| KMEQGAScrapeErrors | warning | Sustained QGA errors for 15m |
+| KMEeBPFSubsystemDown | warning | Block eBPF subsystem down for 10m |
+| KMEAbsent | critical | No metrics scraped for 10m |
+
+The `KMEAbsent` alert uses the Prometheus `up` metric with `job="kubevirt-metrics-exporter"`. If your PodMonitor uses a different job name, update the alert expression to match.
+
+QMP histogram latency values reported in alert annotations are approximate due to the default histogram bucket granularity (10ms, 100ms, 1s). For higher precision, configure finer-grained boundaries via `--boundaries`.
 
 ## Building
 

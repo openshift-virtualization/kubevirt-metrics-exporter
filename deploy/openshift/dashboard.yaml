@@ -529,13 +529,13 @@ spec:
             - x: 0
               "y": 0
               width: 12
-              height: 8
+              height: 12
               content:
                 $ref: '#/spec/panels/qmp_ratio'
             - x: 12
               "y": 0
               width: 12
-              height: 8
+              height: 12
               content:
                 $ref: '#/spec/panels/qmp_p99'
 
@@ -549,13 +549,13 @@ spec:
             - x: 0
               "y": 0
               width: 12
-              height: 8
+              height: 12
               content:
                 $ref: '#/spec/panels/qga_latency'
             - x: 12
               "y": 0
               width: 12
-              height: 8
+              height: 12
               content:
                 $ref: '#/spec/panels/qga_iops'
 
@@ -569,7 +569,7 @@ spec:
             - x: 0
               "y": 0
               width: 24
-              height: 8
+              height: 12
               content:
                 $ref: '#/spec/panels/virtqueue_utilization'
 
@@ -583,13 +583,13 @@ spec:
             - x: 0
               "y": 0
               width: 12
-              height: 8
+              height: 12
               content:
                 $ref: '#/spec/panels/block_ratio'
             - x: 12
               "y": 0
               width: 12
-              height: 8
+              height: 12
               content:
                 $ref: '#/spec/panels/block_p99'
 
@@ -603,13 +603,13 @@ spec:
             - x: 0
               "y": 0
               width: 12
-              height: 8
+              height: 12
               content:
                 $ref: '#/spec/panels/nfs_ratio'
             - x: 12
               "y": 0
               width: 12
-              height: 8
+              height: 12
               content:
                 $ref: '#/spec/panels/nfs_p99'
 
@@ -623,12 +623,12 @@ spec:
             - x: 0
               "y": 0
               width: 12
-              height: 8
+              height: 12
               content:
                 $ref: '#/spec/panels/nfs_vfs_ratio'
             - x: 12
               "y": 0
               width: 12
-              height: 8
+              height: 12
               content:
                 $ref: '#/spec/panels/nfs_vfs_p99'

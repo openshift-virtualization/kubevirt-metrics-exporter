@@ -147,7 +147,7 @@ spec:
                     datasource:
                       kind: PrometheusDatasource
                       name: thanos-querier
-                    query: '(sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_count{node=~"$node", namespace=~"$namespace", vmi=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])) - sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_bucket{le="0.01", node=~"$node", namespace=~"$namespace", vmi=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]))) / sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_count{node=~"$node", namespace=~"$namespace", vmi=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])) * 100'
+                    query: '(sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_count{node=~"$node", namespace=~"$namespace", name=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])) - sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_bucket{le="0.01", node=~"$node", namespace=~"$namespace", name=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]))) / sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_count{node=~"$node", namespace=~"$namespace", name=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])) * 100'
                     minStep: "30s"
                     seriesNameFormat: "> 10ms ({{node}})"
             - kind: TimeSeriesQuery
@@ -158,7 +158,7 @@ spec:
                     datasource:
                       kind: PrometheusDatasource
                       name: thanos-querier
-                    query: '(sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_count{node=~"$node", namespace=~"$namespace", vmi=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])) - sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_bucket{le="0.1", node=~"$node", namespace=~"$namespace", vmi=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]))) / sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_count{node=~"$node", namespace=~"$namespace", vmi=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])) * 100'
+                    query: '(sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_count{node=~"$node", namespace=~"$namespace", name=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])) - sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_bucket{le="0.1", node=~"$node", namespace=~"$namespace", name=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]))) / sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_count{node=~"$node", namespace=~"$namespace", name=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])) * 100'
                     minStep: "30s"
                     seriesNameFormat: "> 100ms ({{node}})"
             - kind: TimeSeriesQuery
@@ -169,7 +169,7 @@ spec:
                     datasource:
                       kind: PrometheusDatasource
                       name: thanos-querier
-                    query: '(sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_count{node=~"$node", namespace=~"$namespace", vmi=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])) - sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_bucket{le="1", node=~"$node", namespace=~"$namespace", vmi=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]))) / sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_count{node=~"$node", namespace=~"$namespace", vmi=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])) * 100'
+                    query: '(sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_count{node=~"$node", namespace=~"$namespace", name=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])) - sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_bucket{le="1", node=~"$node", namespace=~"$namespace", name=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval]))) / sum by (node) (rate(kubevirt_vmi_storage_io_latency_seconds_count{node=~"$node", namespace=~"$namespace", name=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])) * 100'
                     minStep: "30s"
                     seriesNameFormat: "> 1s ({{node}})"
 
@@ -197,7 +197,7 @@ spec:
                     datasource:
                       kind: PrometheusDatasource
                       name: thanos-querier
-                    query: 'histogram_quantile(0.99, sum by (node, le) (rate(kubevirt_vmi_storage_io_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", vmi=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])))'
+                    query: 'histogram_quantile(0.99, sum by (node, le) (rate(kubevirt_vmi_storage_io_latency_seconds_bucket{node=~"$node", namespace=~"$namespace", name=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"}[$interval])))'
                     minStep: "30s"
                     seriesNameFormat: "{{node}}"
 
@@ -459,7 +459,7 @@ spec:
                     datasource:
                       kind: PrometheusDatasource
                       name: thanos-querier
-                    query: 'avg by (node) (kubevirt_vmi_storage_guest_latency_avg_seconds{node=~"$node", namespace=~"$namespace", vmi=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"})'
+                    query: 'avg by (node) (kubevirt_vmi_storage_guest_latency_avg_seconds{node=~"$node", namespace=~"$namespace", name=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"})'
                     minStep: "30s"
                     seriesNameFormat: "{{node}}"
 
@@ -486,7 +486,7 @@ spec:
                     datasource:
                       kind: PrometheusDatasource
                       name: thanos-querier
-                    query: 'sum by (node) (kubevirt_vmi_storage_guest_iops{node=~"$node", namespace=~"$namespace", vmi=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"})'
+                    query: 'sum by (node) (kubevirt_vmi_storage_guest_iops{node=~"$node", namespace=~"$namespace", name=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"})'
                     minStep: "30s"
                     seriesNameFormat: "{{node}}"
 
@@ -514,7 +514,7 @@ spec:
                     datasource:
                       kind: PrometheusDatasource
                       name: thanos-querier
-                    query: 'sum by (node) (kubevirt_vmi_storage_queue_inuse{node=~"$node", namespace=~"$namespace", vmi=~"$vmi", persistentvolumeclaim=~"$persistentvolumeclaim"}) / sum by (node) (kubevirt_vmi_storage_queue_size{node=~"$node", namespace=~"$namespace", vmi=~"$vmi", persistentvolumeclaim=~"$persistentvolumeclaim"}) * 100'
+                    query: 'sum by (node) (kubevirt_vmi_storage_queue_inuse{node=~"$node", namespace=~"$namespace", name=~"$vmi", persistentvolumeclaim=~"$persistentvolumeclaim"}) / sum by (node) (kubevirt_vmi_storage_queue_size{node=~"$node", namespace=~"$namespace", name=~"$vmi", persistentvolumeclaim=~"$persistentvolumeclaim"}) * 100'
                     minStep: "30s"
                     seriesNameFormat: "{{node}}"
 

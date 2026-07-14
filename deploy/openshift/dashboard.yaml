@@ -459,9 +459,9 @@ spec:
                     datasource:
                       kind: PrometheusDatasource
                       name: thanos-querier
-                    query: 'avg by (node) (kubevirt_vmi_storage_guest_latency_avg_seconds{node=~"$node", namespace=~"$namespace", name=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"})'
+                    query: 'topk(25, kubevirt_vmi_storage_guest_latency_avg_seconds{node=~"$node", namespace=~"$namespace", name=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"})'
                     minStep: "30s"
-                    seriesNameFormat: "{{node}}"
+                    seriesNameFormat: "{{name}} / {{disk}}"
 
       qga_iops:
         kind: Panel
@@ -486,9 +486,9 @@ spec:
                     datasource:
                       kind: PrometheusDatasource
                       name: thanos-querier
-                    query: 'sum by (node) (kubevirt_vmi_storage_guest_iops{node=~"$node", namespace=~"$namespace", name=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"})'
+                    query: 'topk(25, kubevirt_vmi_storage_guest_iops{node=~"$node", namespace=~"$namespace", name=~"$vmi", operation=~"$operation", persistentvolumeclaim=~"$persistentvolumeclaim"})'
                     minStep: "30s"
-                    seriesNameFormat: "{{node}}"
+                    seriesNameFormat: "{{name}} / {{disk}}"
 
       virtqueue_utilization:
         kind: Panel
@@ -514,9 +514,9 @@ spec:
                     datasource:
                       kind: PrometheusDatasource
                       name: thanos-querier
-                    query: 'sum by (node) (kubevirt_vmi_storage_queue_inuse{node=~"$node", namespace=~"$namespace", name=~"$vmi", persistentvolumeclaim=~"$persistentvolumeclaim"}) / sum by (node) (kubevirt_vmi_storage_queue_size{node=~"$node", namespace=~"$namespace", name=~"$vmi", persistentvolumeclaim=~"$persistentvolumeclaim"}) * 100'
+                    query: 'topk(25, sum by (name, disk) (kubevirt_vmi_storage_queue_inuse{node=~"$node", namespace=~"$namespace", name=~"$vmi", persistentvolumeclaim=~"$persistentvolumeclaim"}) / sum by (name, disk) (kubevirt_vmi_storage_queue_size{node=~"$node", namespace=~"$namespace", name=~"$vmi", persistentvolumeclaim=~"$persistentvolumeclaim"}) * 100)'
                     minStep: "30s"
-                    seriesNameFormat: "{{node}}"
+                    seriesNameFormat: "{{name}} / {{disk}}"
 
     layouts:
       - kind: Grid

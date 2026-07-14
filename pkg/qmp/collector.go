@@ -37,15 +37,15 @@ var (
 
 	virtqueueInuseDesc = prometheus.NewDesc(
 		"kubevirt_vmi_storage_queue_inuse",
-		"Number of in-flight descriptors in a virtio-blk virtqueue",
-		[]string{"namespace", "name", "node", "disk", "persistentvolumeclaim", "queue"},
+		"Number of in-flight descriptors in a storage virtqueue",
+		[]string{"namespace", "name", "node", "disk", "persistentvolumeclaim", "queue", "bus"},
 		nil,
 	)
 
 	virtqueueSizeDesc = prometheus.NewDesc(
 		"kubevirt_vmi_storage_queue_size",
-		"Maximum number of descriptors (capacity) of a virtio-blk virtqueue",
-		[]string{"namespace", "name", "node", "disk", "persistentvolumeclaim", "queue"},
+		"Maximum number of descriptors (capacity) of a storage virtqueue",
+		[]string{"namespace", "name", "node", "disk", "persistentvolumeclaim", "queue", "bus"},
 		nil,
 	)
 )
@@ -67,6 +67,7 @@ type DeviceResult struct {
 type VirtqueueResult struct {
 	Disk     string
 	PVC      string
+	Bus      string
 	Queue    int
 	Inuse    uint32
 	VringNum uint32
@@ -211,9 +212,9 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		for _, vq := range vmi.Virtqueues {
 			queueLabel := strconv.Itoa(vq.Queue)
 			ch <- prometheus.MustNewConstMetric(virtqueueInuseDesc, prometheus.GaugeValue, float64(vq.Inuse),
-				vmi.Namespace, vmi.Name, vmi.Node, vq.Disk, vq.PVC, queueLabel)
+				vmi.Namespace, vmi.Name, vmi.Node, vq.Disk, vq.PVC, queueLabel, vq.Bus)
 			ch <- prometheus.MustNewConstMetric(virtqueueSizeDesc, prometheus.GaugeValue, float64(vq.VringNum),
-				vmi.Namespace, vmi.Name, vmi.Node, vq.Disk, vq.PVC, queueLabel)
+				vmi.Namespace, vmi.Name, vmi.Node, vq.Disk, vq.PVC, queueLabel, vq.Bus)
 		}
 	}
 }
@@ -531,6 +532,50 @@ func (c *Collector) scrapeVM(ctx context.Context, conn *vmConnection) (*VMIResul
 				virtqueues = append(virtqueues, VirtqueueResult{
 					Disk:     alias,
 					PVC:      conn.pvcMap[alias],
+					Bus:      "virtio",
+					Queue:    qi,
+					Inuse:    qs.Inuse,
+					VringNum: qs.VringNum,
+				})
+			}
+		}
+
+		for _, vdev := range virtioDevices {
+			if !IsVirtioScsi(&vdev) {
+				continue
+			}
+			// skip anonymous/non-peripheral paths (e.g. /machine/peripheral-anon/...)
+			if _, ok := ExtractControllerName(vdev.Path); !ok {
+				continue
+			}
+
+			nq, cached := conn.numQueues[vdev.Path]
+			if !cached {
+				statusCtx, statusCancel := context.WithTimeout(ctx, c.cfg.QMPTimeout)
+				vs, err := conn.client.QueryVirtioStatus(statusCtx, vdev.Path)
+				statusCancel()
+				if err != nil {
+					c.log.Warn("qmp: failed to query virtio-scsi status", "vmi", conn.vmi, "path", vdev.Path, "error", err)
+					continue
+				}
+				nq = vs.NumVqs
+				if nq > 0 {
+					conn.numQueues[vdev.Path] = nq
+				}
+			}
+
+			for qi := 0; qi < nq; qi++ {
+				qsCtx, qsCancel := context.WithTimeout(ctx, c.cfg.QMPTimeout)
+				qs, err := conn.client.QueryVirtioQueueStatus(qsCtx, vdev.Path, qi)
+				qsCancel()
+				if err != nil {
+					c.log.Warn("qmp: failed to query virtio-scsi queue status", "vmi", conn.vmi, "path", vdev.Path, "queue", qi, "error", err)
+					continue
+				}
+				virtqueues = append(virtqueues, VirtqueueResult{
+					Disk:     "",
+					PVC:      "",
+					Bus:      "scsi",
 					Queue:    qi,
 					Inuse:    qs.Inuse,
 					VringNum: qs.VringNum,

@@ -19,7 +19,7 @@ Guest application
 Guest OS block layer ◄──── QGA: guest-side latency & IOPS (Windows only)
   │
   ▼
-Virtio virtqueue ◄──────── QMP: queue_inuse / queue_size (saturation)
+Storage virtqueue ◄─────── QMP: queue_inuse / queue_size (saturation, virtio/scsi)
   │
   ▼
 QEMU block backend ◄────── QMP: I/O latency histogram (hypervisor-side)
@@ -41,8 +41,8 @@ VMI-level metrics use the `kubevirt_vmi_storage_*` prefix; exporter-scoped opera
 | Metric | Type | Labels | Description |
 |--------|------|--------|-------------|
 | `kubevirt_vmi_storage_io_latency_seconds` | histogram | namespace, name, node, disk, persistentvolumeclaim, operation | Per-disk I/O latency for KubeVirt VMs |
-| `kubevirt_vmi_storage_queue_inuse` | gauge | namespace, name, node, disk, persistentvolumeclaim, queue | In-flight descriptors in a virtio-blk virtqueue |
-| `kubevirt_vmi_storage_queue_size` | gauge | namespace, name, node, disk, persistentvolumeclaim, queue | Capacity (max descriptors) of a virtio-blk virtqueue |
+| `kubevirt_vmi_storage_queue_inuse` | gauge | namespace, name, node, disk, persistentvolumeclaim, queue, bus | In-flight descriptors in a storage virtqueue (`bus="virtio"` for virtio-blk disks, `bus="scsi"` for virtio-scsi controllers; `disk` and `persistentvolumeclaim` are empty for SCSI) |
+| `kubevirt_vmi_storage_queue_size` | gauge | namespace, name, node, disk, persistentvolumeclaim, queue, bus | Capacity (max descriptors) of a storage virtqueue (see queue_inuse for label semantics) |
 | `kme_qmp_scrape_errors_total` | counter | | Errors during QMP poll cycles |
 | `kme_qmp_last_poll_timestamp_seconds` | gauge | | Unix timestamp of last QMP poll |
 
@@ -84,6 +84,8 @@ Virtqueue saturation per disk (ratio of in-flight descriptors to capacity):
 ```promql
 kubevirt_vmi_storage_queue_inuse / kubevirt_vmi_storage_queue_size
 ```
+
+The `bus` label distinguishes `virtio` (per-disk virtio-blk devices) from `scsi` (shared virtio-scsi controller). For virtio-scsi, `disk` and `persistentvolumeclaim` are empty because the virtqueues belong to the shared controller rather than any individual disk.
 
 ## Configuration
 

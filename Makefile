@@ -19,21 +19,22 @@ image:
 push: image
 	podman push $(IMAGE):$(TAG)
 
+KUSTOMIZE_IMAGE_PATTERN := image: quay.io/openshift-virtualization/kubevirt-metrics-exporter:latest
+KUSTOMIZE_IMAGE_REPLACE := image: $(IMAGE):$(TAG)
+
 deploy:
-	cd deploy/openshift && kustomize edit set image quay.io/openshift-virtualization/kubevirt-metrics-exporter=$(IMAGE):$(TAG)
-	oc apply -k deploy/openshift/
+	kustomize build deploy/openshift/ | grep -qF '$(KUSTOMIZE_IMAGE_PATTERN)' || { echo "ERROR: base image not found in manifest; image substitution would silently fail" >&2; exit 1; }
+	kustomize build deploy/openshift/ | sed 's|$(KUSTOMIZE_IMAGE_PATTERN)|$(KUSTOMIZE_IMAGE_REPLACE)|' | oc apply -f -
 
 deploy-kubernetes:
-	cd deploy/kubernetes && kustomize edit set image quay.io/openshift-virtualization/kubevirt-metrics-exporter=$(IMAGE):$(TAG)
-	kubectl apply -k deploy/kubernetes/
+	kustomize build deploy/kubernetes/ | grep -qF '$(KUSTOMIZE_IMAGE_PATTERN)' || { echo "ERROR: base image not found in manifest; image substitution would silently fail" >&2; exit 1; }
+	kustomize build deploy/kubernetes/ | sed 's|$(KUSTOMIZE_IMAGE_PATTERN)|$(KUSTOMIZE_IMAGE_REPLACE)|' | kubectl apply -f -
 
 deploy-manifest:
-	@cd deploy/openshift && kustomize edit set image quay.io/openshift-virtualization/kubevirt-metrics-exporter=$(IMAGE):$(TAG)
-	@kustomize build deploy/openshift/
+	@kustomize build deploy/openshift/ | sed 's|$(KUSTOMIZE_IMAGE_PATTERN)|$(KUSTOMIZE_IMAGE_REPLACE)|'
 
 deploy-manifest-kubernetes:
-	@cd deploy/kubernetes && kustomize edit set image quay.io/openshift-virtualization/kubevirt-metrics-exporter=$(IMAGE):$(TAG)
-	@kustomize build deploy/kubernetes/
+	@kustomize build deploy/kubernetes/ | sed 's|$(KUSTOMIZE_IMAGE_PATTERN)|$(KUSTOMIZE_IMAGE_REPLACE)|'
 
 undeploy:
 	oc delete -k deploy/openshift/ --ignore-not-found

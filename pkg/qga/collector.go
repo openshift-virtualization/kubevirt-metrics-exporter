@@ -458,6 +458,15 @@ func (c *Collector) connectVM(ctx context.Context, ns, vmi, podName string, pid 
 		if err != nil {
 			c.log.Warn("qga: guest-get-disks failed, disk mapping unavailable", "vmi", vmi, "error", err)
 		} else {
+			for _, gd := range guestDisks {
+				c.log.Debug("qga: guest-get-disks entry", "vmi", vmi,
+					"name", gd.Name, "drive_index", gd.DriveIndex,
+					"ctrl_domain", gd.Location.Controller.Domain,
+					"ctrl_bus", gd.Location.Controller.Bus,
+					"ctrl_slot", gd.Location.Controller.Slot,
+					"ctrl_fn", gd.Location.Controller.Function,
+					"bus", gd.Location.Bus, "target", gd.Location.Target, "unit", gd.Location.Unit)
+			}
 			diskMap, err = BuildDiskMapping(domainXML, guestDisks)
 			if err != nil {
 				c.log.Warn("qga: building disk mapping failed", "vmi", vmi, "error", err)

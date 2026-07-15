@@ -1,135 +1,30 @@
 package qga
 
 import (
-	"testing"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
 	"github.com/openshift-virtualization/kubevirt-metrics-exporter/pkg/qmp"
 )
 
-func TestParseDiskIndex(t *testing.T) {
-	tests := []struct {
-		name   string
-		input  string
-		want   int
-		wantOK bool
-	}{
-		{"standard", "0 C:", 0, true},
-		{"second disk", "1 E:", 1, true},
-		{"third disk", "2 F:", 2, true},
-		{"no partition", "3", 3, true},
-		{"double digit", "10 Z:", 10, true},
-		{"empty string", "", 0, false},
-		{"non-numeric", "abc", 0, false},
-		{"total", "_Total", 0, false},
-		{"spaces only", "  ", 0, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok := ParseDiskIndex(tt.input)
-			if ok != tt.wantOK {
-				t.Errorf("ParseDiskIndex(%q) ok = %v, want %v", tt.input, ok, tt.wantOK)
-			}
-			if got != tt.want {
-				t.Errorf("ParseDiskIndex(%q) = %d, want %d", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestParseGuestGetDisks(t *testing.T) {
-	input := []byte(`{"return":[
-		{"name":"\\\\.\\PhysicalDrive0","partition":false,"address":{"bus-type":"scsi","bus":0,"unit":0,"pci-controller":{"bus":7,"slot":0,"domain":0,"function":0},"dev":"\\\\.\\PhysicalDrive0","target":0}},
-		{"name":"\\\\.\\PhysicalDrive1","partition":false,"address":{"bus-type":"scsi","bus":0,"unit":0,"pci-controller":{"bus":8,"slot":0,"domain":0,"function":0},"dev":"\\\\.\\PhysicalDrive1","target":0}},
-		{"name":"\\\\.\\PhysicalDrive2","partition":false,"address":{"bus-type":"scsi","bus":0,"unit":0,"pci-controller":{"bus":9,"slot":0,"domain":0,"function":0},"dev":"\\\\.\\PhysicalDrive2","target":0}}
-	]}`)
-
-	disks, err := parseGuestGetDisks(input)
-	if err != nil {
-		t.Fatalf("parseGuestGetDisks() error = %v", err)
-	}
-
-	if len(disks) != 3 {
-		t.Fatalf("expected 3 disks, got %d", len(disks))
-	}
-
-	expected := []struct {
-		driveIndex int
-		bus        int
-	}{
-		{0, 7},
-		{1, 8},
-		{2, 9},
-	}
-
-	for i, exp := range expected {
-		if disks[i].DriveIndex != exp.driveIndex {
-			t.Errorf("disk[%d].DriveIndex = %d, want %d", i, disks[i].DriveIndex, exp.driveIndex)
-		}
-		if disks[i].PCIAddr.Bus != exp.bus {
-			t.Errorf("disk[%d].PCIAddr.Bus = %d, want %d", i, disks[i].PCIAddr.Bus, exp.bus)
-		}
-	}
-}
-
-func TestParseGuestGetDisks_SkipsPartitions(t *testing.T) {
-	input := []byte(`{"return":[
-		{"name":"\\\\.\\PhysicalDrive0","partition":false,"address":{"bus-type":"scsi","pci-controller":{"bus":7,"slot":0,"domain":0,"function":0}}},
-		{"name":"C:\\","partition":true}
-	]}`)
-
-	disks, err := parseGuestGetDisks(input)
-	if err != nil {
-		t.Fatalf("parseGuestGetDisks() error = %v", err)
-	}
-
-	if len(disks) != 1 {
-		t.Fatalf("expected 1 disk (partitions skipped), got %d", len(disks))
-	}
-}
-
-func TestParseGuestGetDisks_NoPCIController(t *testing.T) {
-	input := []byte(`{"return":[
-		{"name":"\\\\.\\PhysicalDrive0","partition":false,"address":{"bus-type":"scsi","bus":0,"unit":0}}
-	]}`)
-
-	disks, err := parseGuestGetDisks(input)
-	if err != nil {
-		t.Fatalf("parseGuestGetDisks() error = %v", err)
-	}
-
-	if len(disks) != 0 {
-		t.Errorf("expected 0 disks (no PCI controller), got %d", len(disks))
-	}
-}
-
-func TestParsePhysicalDriveIndex(t *testing.T) {
-	tests := []struct {
-		name   string
-		input  string
-		want   int
-		wantOK bool
-	}{
-		{"drive 0", `\\.\PhysicalDrive0`, 0, true},
-		{"drive 1", `\\.\PhysicalDrive1`, 1, true},
-		{"drive 10", `\\.\PhysicalDrive10`, 10, true},
-		{"no prefix", `PhysicalDrive2`, 2, true},
-		{"unrelated", `C:\Windows`, 0, false},
-		{"empty", "", 0, false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got, ok := parsePhysicalDriveIndex(tt.input)
-			if ok != tt.wantOK {
-				t.Errorf("parsePhysicalDriveIndex(%q) ok = %v, want %v", tt.input, ok, tt.wantOK)
-			}
-			if got != tt.want {
-				t.Errorf("parsePhysicalDriveIndex(%q) = %d, want %d", tt.input, got, tt.want)
-			}
-		})
-	}
-}
+var _ = Describe("ParseDiskIndex", func() {
+	DescribeTable("should parse disk index from name string",
+		func(input string, want int, wantOK bool) {
+			got, ok := ParseDiskIndex(input)
+			Expect(ok).To(Equal(wantOK))
+			Expect(got).To(Equal(want))
+		},
+		Entry("standard", "0 C:", 0, true),
+		Entry("second disk", "1 E:", 1, true),
+		Entry("third disk", "2 F:", 2, true),
+		Entry("no partition", "3", 3, true),
+		Entry("double digit", "10 Z:", 10, true),
+		Entry("empty string", "", 0, false),
+		Entry("non-numeric", "abc", 0, false),
+		Entry("total", "_Total", 0, false),
+		Entry("spaces only", "  ", 0, false),
+	)
+})
 
 const testDomainXML = `<domain type='kvm'>
   <devices>
@@ -151,62 +46,94 @@ const testDomainXML = `<domain type='kvm'>
   </devices>
 </domain>`
 
-func TestBuildDiskMapping(t *testing.T) {
-	guestDisks := []GuestDisk{
-		{Name: `\\.\PhysicalDrive0`, DriveIndex: 0, PCIAddr: qmp.PCIAddr{Domain: 0, Bus: 7, Slot: 0, Function: 0}},
-		{Name: `\\.\PhysicalDrive1`, DriveIndex: 1, PCIAddr: qmp.PCIAddr{Domain: 0, Bus: 8, Slot: 0, Function: 0}},
-		{Name: `\\.\PhysicalDrive2`, DriveIndex: 2, PCIAddr: qmp.PCIAddr{Domain: 0, Bus: 9, Slot: 0, Function: 0}},
-	}
+var _ = Describe("parseGuestGetDisks", func() {
+	It("should parse physical drive entries", func() {
+		input := []byte(`{"return":[
+			{"name":"\\\\.\\PhysicalDrive0","partition":false,"address":{"bus-type":"scsi","bus":0,"unit":0,"pci-controller":{"bus":7,"slot":0,"domain":0,"function":0},"dev":"\\\\.\\PhysicalDrive0","target":0}},
+			{"name":"\\\\.\\PhysicalDrive1","partition":false,"address":{"bus-type":"scsi","bus":0,"unit":0,"pci-controller":{"bus":8,"slot":0,"domain":0,"function":0},"dev":"\\\\.\\PhysicalDrive1","target":0}},
+			{"name":"\\\\.\\PhysicalDrive2","partition":false,"address":{"bus-type":"scsi","bus":0,"unit":0,"pci-controller":{"bus":9,"slot":0,"domain":0,"function":0},"dev":"\\\\.\\PhysicalDrive2","target":0}}
+		]}`)
 
-	dm, err := BuildDiskMapping(testDomainXML, guestDisks)
-	if err != nil {
-		t.Fatalf("BuildDiskMapping() error = %v", err)
-	}
+		disks, err := parseGuestGetDisks(input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(disks).To(HaveLen(3))
+		Expect(disks[0].DriveIndex).To(Equal(0))
+		Expect(disks[0].PCIAddr.Bus).To(Equal(7))
+		Expect(disks[1].DriveIndex).To(Equal(1))
+		Expect(disks[1].PCIAddr.Bus).To(Equal(8))
+		Expect(disks[2].DriveIndex).To(Equal(2))
+		Expect(disks[2].PCIAddr.Bus).To(Equal(9))
+	})
 
-	expected := map[int]string{
-		0: "vol-0",
-		1: "vol-1",
-		2: "vol-2",
-	}
+	It("should skip partition entries", func() {
+		input := []byte(`{"return":[
+			{"name":"\\\\.\\PhysicalDrive0","partition":false,"address":{"bus-type":"scsi","pci-controller":{"bus":7,"slot":0,"domain":0,"function":0}}},
+			{"name":"C:\\","partition":true}
+		]}`)
 
-	if len(dm) != len(expected) {
-		t.Fatalf("expected %d mappings, got %d: %v", len(expected), len(dm), dm)
-	}
+		disks, err := parseGuestGetDisks(input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(disks).To(HaveLen(1))
+	})
 
-	for idx, wantVol := range expected {
-		if gotVol, ok := dm[idx]; !ok {
-			t.Errorf("missing drive index %d", idx)
-		} else if gotVol != wantVol {
-			t.Errorf("drive index %d: got %q, want %q", idx, gotVol, wantVol)
+	It("should skip entries without PCI controller", func() {
+		input := []byte(`{"return":[
+			{"name":"\\\\.\\PhysicalDrive0","partition":false,"address":{"bus-type":"scsi","bus":0,"unit":0}}
+		]}`)
+
+		disks, err := parseGuestGetDisks(input)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(disks).To(BeEmpty())
+	})
+})
+
+var _ = Describe("parsePhysicalDriveIndex", func() {
+	DescribeTable("should parse drive index from name",
+		func(input string, want int, wantOK bool) {
+			got, ok := parsePhysicalDriveIndex(input)
+			Expect(ok).To(Equal(wantOK))
+			Expect(got).To(Equal(want))
+		},
+		Entry("drive 0", `\\.\PhysicalDrive0`, 0, true),
+		Entry("drive 1", `\\.\PhysicalDrive1`, 1, true),
+		Entry("drive 10", `\\.\PhysicalDrive10`, 10, true),
+		Entry("no prefix", `PhysicalDrive2`, 2, true),
+		Entry("unrelated", `C:\Windows`, 0, false),
+		Entry("empty", "", 0, false),
+	)
+})
+
+var _ = Describe("BuildDiskMapping", func() {
+	It("should map drive indices to volume names", func() {
+		guestDisks := []GuestDisk{
+			{Name: `\\.\PhysicalDrive0`, DriveIndex: 0, PCIAddr: qmp.PCIAddr{Domain: 0, Bus: 7, Slot: 0, Function: 0}},
+			{Name: `\\.\PhysicalDrive1`, DriveIndex: 1, PCIAddr: qmp.PCIAddr{Domain: 0, Bus: 8, Slot: 0, Function: 0}},
+			{Name: `\\.\PhysicalDrive2`, DriveIndex: 2, PCIAddr: qmp.PCIAddr{Domain: 0, Bus: 9, Slot: 0, Function: 0}},
 		}
-	}
-}
 
-func TestBuildDiskMapping_PartialMatch(t *testing.T) {
-	guestDisks := []GuestDisk{
-		{Name: `\\.\PhysicalDrive0`, DriveIndex: 0, PCIAddr: qmp.PCIAddr{Domain: 0, Bus: 7, Slot: 0, Function: 0}},
-		{Name: `\\.\PhysicalDrive1`, DriveIndex: 1, PCIAddr: qmp.PCIAddr{Domain: 0, Bus: 99, Slot: 0, Function: 0}},
-	}
+		dm, err := BuildDiskMapping(testDomainXML, guestDisks)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(dm).To(HaveLen(3))
+		Expect(dm[0]).To(Equal("vol-0"))
+		Expect(dm[1]).To(Equal("vol-1"))
+		Expect(dm[2]).To(Equal("vol-2"))
+	})
 
-	dm, err := BuildDiskMapping(testDomainXML, guestDisks)
-	if err != nil {
-		t.Fatalf("BuildDiskMapping() error = %v", err)
-	}
+	It("should produce a partial mapping when some PCI addresses don't match", func() {
+		guestDisks := []GuestDisk{
+			{Name: `\\.\PhysicalDrive0`, DriveIndex: 0, PCIAddr: qmp.PCIAddr{Domain: 0, Bus: 7, Slot: 0, Function: 0}},
+			{Name: `\\.\PhysicalDrive1`, DriveIndex: 1, PCIAddr: qmp.PCIAddr{Domain: 0, Bus: 99, Slot: 0, Function: 0}},
+		}
 
-	if len(dm) != 1 {
-		t.Fatalf("expected 1 mapping (partial), got %d: %v", len(dm), dm)
-	}
-	if dm[0] != "vol-0" {
-		t.Errorf("drive 0: got %q, want %q", dm[0], "vol-0")
-	}
-}
+		dm, err := BuildDiskMapping(testDomainXML, guestDisks)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(dm).To(HaveLen(1))
+		Expect(dm[0]).To(Equal("vol-0"))
+	})
 
-func TestBuildDiskMapping_NoGuestDisks(t *testing.T) {
-	dm, err := BuildDiskMapping(testDomainXML, nil)
-	if err != nil {
-		t.Fatalf("BuildDiskMapping() error = %v", err)
-	}
-	if len(dm) != 0 {
-		t.Errorf("expected empty mapping, got %v", dm)
-	}
-}
+	It("should return empty mapping when no guest disks provided", func() {
+		dm, err := BuildDiskMapping(testDomainXML, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(dm).To(BeEmpty())
+	})
+})

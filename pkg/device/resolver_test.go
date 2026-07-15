@@ -1,217 +1,121 @@
 package device
 
 import (
-	"testing"
-
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 )
 
-func TestParseKubeletVolumePath(t *testing.T) {
-	tests := []struct {
-		name       string
-		mountPoint string
-		wantUID    string
-		wantPVC    string
-		wantOK     bool
-	}{
-		{
-			name:       "NFS volume",
-			mountPoint: "/var/lib/kubelet/pods/6a76960a-a927-4211-96e6-1f187b126e90/volumes/kubernetes.io~nfs/example",
-			wantUID:    "6a76960a-a927-4211-96e6-1f187b126e90",
-			wantPVC:    "example",
-			wantOK:     true,
+var _ = Describe("parseKubeletVolumePath", func() {
+	DescribeTable("should parse paths",
+		func(mountPoint, wantUID, wantPVC string, wantOK bool) {
+			uid, pvc, ok := parseKubeletVolumePath(mountPoint)
+			Expect(ok).To(Equal(wantOK))
+			if wantOK {
+				Expect(uid).To(Equal(wantUID))
+				Expect(pvc).To(Equal(wantPVC))
+			}
 		},
-		{
-			name:       "CSI volume with /mount suffix",
-			mountPoint: "/var/lib/kubelet/pods/aabbccdd-1234-5678-9abc-def012345678/volumes/kubernetes.io~csi/pvc-deadbeef-0000-1111-2222-333344445555/mount",
-			wantUID:    "aabbccdd-1234-5678-9abc-def012345678",
-			wantPVC:    "pvc-deadbeef-0000-1111-2222-333344445555",
-			wantOK:     true,
-		},
-		{
-			name:       "local volume",
-			mountPoint: "/var/lib/kubelet/pods/11111111-2222-3333-4444-555566667777/volumes/kubernetes.io~local-volume/local-pv-abc",
-			wantUID:    "11111111-2222-3333-4444-555566667777",
-			wantPVC:    "local-pv-abc",
-			wantOK:     true,
-		},
-		{
-			name:       "non-kubelet mount",
-			mountPoint: "/mnt/data",
-			wantOK:     false,
-		},
-		{
-			name:       "root filesystem",
-			mountPoint: "/",
-			wantOK:     false,
-		},
-		{
-			name:       "kubelet path without volume",
-			mountPoint: "/var/lib/kubelet/pods/6a76960a-a927-4211-96e6-1f187b126e90/containers/app",
-			wantOK:     false,
-		},
-		{
-			name:       "invalid UUID in path",
-			mountPoint: "/var/lib/kubelet/pods/not-a-uuid/volumes/kubernetes.io~nfs/example",
-			wantOK:     false,
-		},
-		{
-			name:       "block device path does not match filesystem regex",
-			mountPoint: "/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/pvc-30f5aca9-100b-4759-b9d9-5d896081fd23/c68a7381-7595-4de4-a594-cffe21c042fe",
-			wantOK:     false,
-		},
-	}
+		Entry("NFS volume",
+			"/var/lib/kubelet/pods/6a76960a-a927-4211-96e6-1f187b126e90/volumes/kubernetes.io~nfs/example",
+			"6a76960a-a927-4211-96e6-1f187b126e90", "example", true),
+		Entry("CSI volume with /mount suffix",
+			"/var/lib/kubelet/pods/aabbccdd-1234-5678-9abc-def012345678/volumes/kubernetes.io~csi/pvc-deadbeef-0000-1111-2222-333344445555/mount",
+			"aabbccdd-1234-5678-9abc-def012345678", "pvc-deadbeef-0000-1111-2222-333344445555", true),
+		Entry("local volume",
+			"/var/lib/kubelet/pods/11111111-2222-3333-4444-555566667777/volumes/kubernetes.io~local-volume/local-pv-abc",
+			"11111111-2222-3333-4444-555566667777", "local-pv-abc", true),
+		Entry("non-kubelet mount", "/mnt/data", "", "", false),
+		Entry("root filesystem", "/", "", "", false),
+		Entry("kubelet path without volume",
+			"/var/lib/kubelet/pods/6a76960a-a927-4211-96e6-1f187b126e90/containers/app",
+			"", "", false),
+		Entry("invalid UUID in path",
+			"/var/lib/kubelet/pods/not-a-uuid/volumes/kubernetes.io~nfs/example",
+			"", "", false),
+		Entry("block device path does not match filesystem regex",
+			"/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/pvc-30f5aca9-100b-4759-b9d9-5d896081fd23/c68a7381-7595-4de4-a594-cffe21c042fe",
+			"", "", false),
+	)
+})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			uid, pvc, ok := parseKubeletVolumePath(tt.mountPoint)
-			if ok != tt.wantOK {
-				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)
+var _ = Describe("parseKubeletBlockDevicePath", func() {
+	DescribeTable("should parse paths",
+		func(mountPoint, wantUID, wantPVC string, wantOK bool) {
+			uid, pvc, ok := parseKubeletBlockDevicePath(mountPoint)
+			Expect(ok).To(Equal(wantOK))
+			if wantOK {
+				Expect(uid).To(Equal(wantUID))
+				Expect(pvc).To(Equal(wantPVC))
 			}
-			if !tt.wantOK {
-				return
-			}
-			if uid != tt.wantUID {
-				t.Errorf("podUID = %q, want %q", uid, tt.wantUID)
-			}
-			if pvc != tt.wantPVC {
-				t.Errorf("pvcName = %q, want %q", pvc, tt.wantPVC)
-			}
+		},
+		Entry("CSI block volume publish path",
+			"/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/pvc-30f5aca9-100b-4759-b9d9-5d896081fd23/c68a7381-7595-4de4-a594-cffe21c042fe",
+			"c68a7381-7595-4de4-a594-cffe21c042fe", "pvc-30f5aca9-100b-4759-b9d9-5d896081fd23", true),
+		Entry("staging path (no pod UID)",
+			"/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/staging/pvc-30f5aca9-100b-4759-b9d9-5d896081fd23/0001-0009-rook-ceph-0000000000000001-474bbf8f-2bec-4025-8391-5b316cdb801f",
+			"", "", false),
+		Entry("dev path (no pod UID at end)",
+			"/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/pvc-30f5aca9-100b-4759-b9d9-5d896081fd23/dev/c68a7381-7595-4de4-a594-cffe21c042fe",
+			"", "", false),
+		Entry("filesystem volume path does not match block regex",
+			"/var/lib/kubelet/pods/6a76960a-a927-4211-96e6-1f187b126e90/volumes/kubernetes.io~nfs/example",
+			"", "", false),
+	)
+})
+
+var _ = Describe("Resolver.resolvePVCName", func() {
+	var r *Resolver
+
+	BeforeEach(func() {
+		indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
+			PVCByPVIndexName: PVCByPVIndexFunc,
 		})
-	}
-}
-
-func TestParseKubeletBlockDevicePath(t *testing.T) {
-	tests := []struct {
-		name       string
-		mountPoint string
-		wantUID    string
-		wantPVC    string
-		wantOK     bool
-	}{
-		{
-			name:       "CSI block volume publish path",
-			mountPoint: "/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/publish/pvc-30f5aca9-100b-4759-b9d9-5d896081fd23/c68a7381-7595-4de4-a594-cffe21c042fe",
-			wantUID:    "c68a7381-7595-4de4-a594-cffe21c042fe",
-			wantPVC:    "pvc-30f5aca9-100b-4759-b9d9-5d896081fd23",
-			wantOK:     true,
-		},
-		{
-			name:       "staging path (no pod UID)",
-			mountPoint: "/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/staging/pvc-30f5aca9-100b-4759-b9d9-5d896081fd23/0001-0009-rook-ceph-0000000000000001-474bbf8f-2bec-4025-8391-5b316cdb801f",
-			wantOK:     false,
-		},
-		{
-			name:       "dev path (no pod UID at end)",
-			mountPoint: "/var/lib/kubelet/plugins/kubernetes.io/csi/volumeDevices/pvc-30f5aca9-100b-4759-b9d9-5d896081fd23/dev/c68a7381-7595-4de4-a594-cffe21c042fe",
-			wantOK:     false,
-		},
-		{
-			name:       "filesystem volume path does not match block regex",
-			mountPoint: "/var/lib/kubelet/pods/6a76960a-a927-4211-96e6-1f187b126e90/volumes/kubernetes.io~nfs/example",
-			wantOK:     false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			uid, pvc, ok := parseKubeletBlockDevicePath(tt.mountPoint)
-			if ok != tt.wantOK {
-				t.Fatalf("ok = %v, want %v", ok, tt.wantOK)
-			}
-			if !tt.wantOK {
-				return
-			}
-			if uid != tt.wantUID {
-				t.Errorf("podUID = %q, want %q", uid, tt.wantUID)
-			}
-			if pvc != tt.wantPVC {
-				t.Errorf("pvcName = %q, want %q", pvc, tt.wantPVC)
-			}
+		indexer.Add(&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "my-data-pvc", Namespace: "default"},
+			Spec:       corev1.PersistentVolumeClaimSpec{VolumeName: "pvc-abcd-1234"},
 		})
-	}
-}
-
-func TestResolvePVCName(t *testing.T) {
-	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
-		PVCByPVIndexName: PVCByPVIndexFunc,
+		r = &Resolver{pvcIndexer: indexer}
 	})
 
-	indexer.Add(&corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{Name: "my-data-pvc", Namespace: "default"},
-		Spec:       corev1.PersistentVolumeClaimSpec{VolumeName: "pvc-abcd-1234"},
+	DescribeTable("should resolve PV names to PVC names",
+		func(pvName, want string) {
+			Expect(r.resolvePVCName(pvName)).To(Equal(want))
+		},
+		Entry("resolves PV to PVC name", "pvc-abcd-1234", "my-data-pvc"),
+		Entry("returns PV name when not found", "pvc-unknown", "pvc-unknown"),
+		Entry("returns empty string as-is", "", ""),
+	)
+
+	It("should return the PV name when indexer is nil", func() {
+		r := &Resolver{}
+		Expect(r.resolvePVCName("pvc-abcd-1234")).To(Equal("pvc-abcd-1234"))
 	})
+})
 
-	r := &Resolver{pvcIndexer: indexer}
-
-	tests := []struct {
-		name   string
-		pvName string
-		want   string
-	}{
-		{"resolves PV to PVC name", "pvc-abcd-1234", "my-data-pvc"},
-		{"returns PV name when not found", "pvc-unknown", "pvc-unknown"},
-		{"returns empty string as-is", "", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := r.resolvePVCName(tt.pvName)
-			if got != tt.want {
-				t.Errorf("resolvePVCName(%q) = %q, want %q", tt.pvName, got, tt.want)
-			}
+var _ = Describe("Resolver.podMetaMap", func() {
+	It("should return metadata for all pods in the store", func() {
+		store := cache.NewStore(cache.MetaNamespaceKeyFunc)
+		store.Add(&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: "virt-launcher-my-vm-abc", Namespace: "production", UID: "uid-1234"},
 		})
-	}
-}
+		store.Add(&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: "other-pod", Namespace: "default", UID: "uid-5678"},
+		})
 
-func TestResolvePVCNameNilIndexer(t *testing.T) {
-	r := &Resolver{}
-	got := r.resolvePVCName("pvc-abcd-1234")
-	if got != "pvc-abcd-1234" {
-		t.Errorf("resolvePVCName with nil indexer = %q, want %q", got, "pvc-abcd-1234")
-	}
-}
+		r := &Resolver{podStore: store}
+		metas := r.podMetaMap()
 
-func TestPodMetaMap(t *testing.T) {
-	store := cache.NewStore(cache.MetaNamespaceKeyFunc)
-	store.Add(&corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "virt-launcher-my-vm-abc",
-			Namespace: "production",
-			UID:       "uid-1234",
-		},
-	})
-	store.Add(&corev1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "other-pod",
-			Namespace: "default",
-			UID:       "uid-5678",
-		},
+		Expect(metas).To(HaveLen(2))
+		Expect(metas["uid-1234"].Name).To(Equal("virt-launcher-my-vm-abc"))
+		Expect(metas["uid-1234"].Namespace).To(Equal("production"))
+		Expect(metas["uid-5678"].Name).To(Equal("other-pod"))
 	})
 
-	r := &Resolver{podStore: store}
-	metas := r.podMetaMap()
-
-	if len(metas) != 2 {
-		t.Fatalf("len = %d, want 2", len(metas))
-	}
-	if metas["uid-1234"].Name != "virt-launcher-my-vm-abc" {
-		t.Errorf("name = %q, want %q", metas["uid-1234"].Name, "virt-launcher-my-vm-abc")
-	}
-	if metas["uid-1234"].Namespace != "production" {
-		t.Errorf("namespace = %q, want %q", metas["uid-1234"].Namespace, "production")
-	}
-	if metas["uid-5678"].Name != "other-pod" {
-		t.Errorf("name = %q, want %q", metas["uid-5678"].Name, "other-pod")
-	}
-}
-
-func TestPodMetaMapNilStore(t *testing.T) {
-	r := &Resolver{}
-	metas := r.podMetaMap()
-	if len(metas) != 0 {
-		t.Errorf("len = %d, want 0", len(metas))
-	}
-}
+	It("should return empty map when store is nil", func() {
+		r := &Resolver{}
+		Expect(r.podMetaMap()).To(BeEmpty())
+	})
+})

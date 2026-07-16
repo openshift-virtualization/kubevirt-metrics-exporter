@@ -336,6 +336,52 @@ func containsString(s, substr string) bool {
 	return false
 }
 
+var _ = Describe("IsVirtioScsi", func() {
+	It("should return true for virtio-scsi-pci", func() {
+		dev := &VirtioDevice{Name: "virtio-scsi-pci", Path: "/machine/peripheral/scsi0/virtio-backend"}
+		Expect(IsVirtioScsi(dev)).To(BeTrue())
+	})
+
+	It("should return true for virtio-scsi variants", func() {
+		dev := &VirtioDevice{Name: "virtio-scsi-ccw", Path: "/some/path"}
+		Expect(IsVirtioScsi(dev)).To(BeTrue())
+	})
+
+	It("should return false for virtio-blk", func() {
+		dev := &VirtioDevice{Name: "virtio-blk-pci", Path: "/some/path"}
+		Expect(IsVirtioScsi(dev)).To(BeFalse())
+	})
+
+	It("should return false for virtio-net", func() {
+		dev := &VirtioDevice{Name: "virtio-net-pci", Path: "/some/path"}
+		Expect(IsVirtioScsi(dev)).To(BeFalse())
+	})
+})
+
+var _ = Describe("ExtractControllerName", func() {
+	It("should extract plain controller name", func() {
+		name, ok := ExtractControllerName("/machine/peripheral/scsi0/virtio-backend")
+		Expect(ok).To(BeTrue())
+		Expect(name).To(Equal("scsi0"))
+	})
+
+	It("should strip ua- prefix from controller name", func() {
+		name, ok := ExtractControllerName("/machine/peripheral/ua-scsibus0/virtio-backend")
+		Expect(ok).To(BeTrue())
+		Expect(name).To(Equal("scsibus0"))
+	})
+
+	It("should return false for non-peripheral paths", func() {
+		_, ok := ExtractControllerName("/machine/peripheral-anon/device[0]")
+		Expect(ok).To(BeFalse())
+	})
+
+	It("should return false for empty path", func() {
+		_, ok := ExtractControllerName("")
+		Expect(ok).To(BeFalse())
+	})
+})
+
 var _ = Describe("IsVirtioBlk", func() {
 	It("should return true for virtio-blk-pci", func() {
 		dev := &VirtioDevice{Name: "virtio-blk-pci", Path: "/machine/peripheral/ua-rootdisk/virtio-backend"}
@@ -430,8 +476,8 @@ var _ = Describe("Collector virtqueue metrics", func() {
 					Name:      "test-vm",
 					Node:      "node-1",
 					Virtqueues: []VirtqueueResult{
-						{Disk: "rootdisk", PVC: "my-pvc", Queue: 0, Inuse: 10, VringNum: 256},
-						{Disk: "rootdisk", PVC: "my-pvc", Queue: 1, Inuse: 5, VringNum: 256},
+						{Disk: "rootdisk", PVC: "my-pvc", Bus: "virtio", Queue: 0, Inuse: 10, VringNum: 256},
+						{Disk: "rootdisk", PVC: "my-pvc", Bus: "virtio", Queue: 1, Inuse: 5, VringNum: 256},
 					},
 				},
 			}
@@ -479,6 +525,7 @@ var _ = Describe("Collector virtqueue metrics", func() {
 				Expect(labels).To(HaveKeyWithValue("node", "node-1"))
 				Expect(labels).To(HaveKeyWithValue("disk", "rootdisk"))
 				Expect(labels).To(HaveKeyWithValue("persistentvolumeclaim", "my-pvc"))
+				Expect(labels).To(HaveKeyWithValue("bus", "virtio"))
 
 				switch labels["queue"] {
 				case "0":
@@ -515,7 +562,7 @@ var _ = Describe("Collector virtqueue metrics", func() {
 				Name:      "test-vm",
 				Node:      "node-1",
 				Virtqueues: []VirtqueueResult{
-					{Disk: "rootdisk", PVC: "", Queue: 0, Inuse: 0, VringNum: 256},
+					{Disk: "rootdisk", PVC: "", Bus: "virtio", Queue: 0, Inuse: 0, VringNum: 256},
 				},
 			},
 		}
@@ -535,6 +582,99 @@ var _ = Describe("Collector virtqueue metrics", func() {
 				Expect(d.GetGauge().GetValue()).To(Equal(256.0))
 			}
 		}
+	})
+})
+
+var _ = Describe("Collector virtio-scsi virtqueue metrics", func() {
+	var c *Collector
+
+	BeforeEach(func() {
+		c = NewCollector(PollerConfig{NodeName: "test-node"}, nil, nil, slog.Default())
+	})
+
+	collectMetrics := func() []prometheus.Metric {
+		ch := make(chan prometheus.Metric, 100)
+		go func() {
+			c.Collect(ch)
+			close(ch)
+		}()
+		var metrics []prometheus.Metric
+		for m := range ch {
+			metrics = append(metrics, m)
+		}
+		return metrics
+	}
+
+	It("should emit scsi bus label and empty pvc for scsi controller queues", func() {
+		results := []VMIResult{
+			{
+				Namespace: "default",
+				Name:      "test-vm",
+				Node:      "node-1",
+				Virtqueues: []VirtqueueResult{
+					{Disk: "", PVC: "", Bus: "scsi", Queue: 0, Inuse: 3, VringNum: 128},
+					{Disk: "", PVC: "", Bus: "scsi", Queue: 1, Inuse: 0, VringNum: 128},
+				},
+			},
+		}
+		c.Update(results, 0, 1234567890.0)
+
+		metrics := collectMetrics()
+
+		var inuseMetrics []prometheus.Metric
+		for _, m := range metrics {
+			if containsString(m.Desc().String(), "storage_queue_inuse") {
+				inuseMetrics = append(inuseMetrics, m)
+			}
+		}
+		Expect(inuseMetrics).To(HaveLen(2))
+
+		for _, m := range inuseMetrics {
+			d := &dto.Metric{}
+			Expect(m.Write(d)).To(Succeed())
+
+			labels := map[string]string{}
+			for _, lp := range d.Label {
+				labels[lp.GetName()] = lp.GetValue()
+			}
+
+			Expect(labels).To(HaveKeyWithValue("bus", "scsi"))
+			Expect(labels).To(HaveKeyWithValue("disk", ""))
+			Expect(labels).To(HaveKeyWithValue("persistentvolumeclaim", ""))
+		}
+	})
+
+	It("should emit both virtio and scsi queues from the same VMI", func() {
+		results := []VMIResult{
+			{
+				Namespace: "default",
+				Name:      "test-vm",
+				Node:      "node-1",
+				Virtqueues: []VirtqueueResult{
+					{Disk: "rootdisk", PVC: "my-pvc", Bus: "virtio", Queue: 0, Inuse: 10, VringNum: 256},
+					{Disk: "", PVC: "", Bus: "scsi", Queue: 0, Inuse: 3, VringNum: 128},
+				},
+			},
+		}
+		c.Update(results, 0, 1234567890.0)
+
+		metrics := collectMetrics()
+
+		busValues := map[string]bool{}
+		for _, m := range metrics {
+			if !containsString(m.Desc().String(), "storage_queue_inuse") {
+				continue
+			}
+			d := &dto.Metric{}
+			Expect(m.Write(d)).To(Succeed())
+			for _, lp := range d.Label {
+				if lp.GetName() == "bus" {
+					busValues[lp.GetValue()] = true
+				}
+			}
+		}
+		Expect(busValues).To(HaveKey("virtio"))
+		Expect(busValues).To(HaveKey("scsi"))
 	})
 })
 

@@ -84,21 +84,21 @@ spec:
 
         - alert: VMIDiskSaturated
           expr: |
-            sum by (namespace, name, node, disk, persistentvolumeclaim) (
+            sum by (namespace, name, node, disk, persistentvolumeclaim, bus) (
               kubevirt_vmi_storage_queue_inuse
             )
             /
-            sum by (namespace, name, node, disk, persistentvolumeclaim) (
+            sum by (namespace, name, node, disk, persistentvolumeclaim, bus) (
               kubevirt_vmi_storage_queue_size
             ) > 0.9
           for: 5m
           labels:
             severity: critical
           annotations:
-            summary: "Virtqueues saturated on {{ $labels.namespace }}/{{ $labels.name }} disk {{ $labels.disk }}"
+            summary: "Virtqueues saturated on {{ $labels.namespace }}/{{ $labels.name }} (bus={{ $labels.bus }}{{ if $labels.disk }}, disk={{ $labels.disk }}{{ end }})"
             description: >-
-              Aggregate virtqueue occupancy for disk {{ $labels.disk }}
-              (PVC {{ $labels.persistentvolumeclaim }}) on VM
+              Aggregate virtqueue occupancy (bus={{ $labels.bus }}{{ if $labels.disk }},
+              disk={{ $labels.disk }}, PVC={{ $labels.persistentvolumeclaim }}{{ end }}) on VM
               {{ $labels.namespace }}/{{ $labels.name }} exceeds 90% across all
               queues, indicating sustained storage backpressure.
 

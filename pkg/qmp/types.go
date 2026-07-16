@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	virtioRegex = regexp.MustCompile(`^/machine/peripheral/(ua-(.+?)/.+)$`)
-	flatRegex   = regexp.MustCompile(`^ua-(.+)$`)
+	virtioRegex         = regexp.MustCompile(`^/machine/peripheral/(ua-(.+?)/.+)$`)
+	flatRegex           = regexp.MustCompile(`^ua-(.+)$`)
+	peripheralNameRegex = regexp.MustCompile(`^/machine/peripheral/([^/]+)/`)
 )
 
 type BlockStatsResponse struct {
@@ -92,6 +93,20 @@ type VirtQueueStatus struct {
 
 func IsVirtioBlk(dev *VirtioDevice) bool {
 	return strings.HasPrefix(dev.Name, "virtio-blk")
+}
+
+func IsVirtioScsi(dev *VirtioDevice) bool {
+	return strings.HasPrefix(dev.Name, "virtio-scsi")
+}
+
+// ExtractControllerName returns the peripheral name from a QEMU device path,
+// stripping any "ua-" prefix so the result is a clean controller identifier.
+func ExtractControllerName(path string) (string, bool) {
+	m := peripheralNameRegex.FindStringSubmatch(path)
+	if len(m) < 2 {
+		return "", false
+	}
+	return strings.TrimPrefix(m[1], "ua-"), true
 }
 
 // PCIAddr identifies a PCI device by its domain/bus/slot/function.

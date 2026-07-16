@@ -62,6 +62,7 @@ type vmiResult struct {
 	Namespace string
 	Name      string
 	Node      string
+	PodName   string
 	Disks     []enrichedDisk
 }
 
@@ -133,21 +134,21 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 			if disk.RdIOPS > 0 || disk.RdLatSec > 0 {
 				ch <- prometheus.MustNewConstMetric(
 					latencyAvgDesc, prometheus.GaugeValue, disk.RdLatSec,
-					vmi.Namespace, vmi.Name, vmi.Node, disk.Disk, disk.PVC, "read", disk.Name,
+					vmi.Namespace, vmi.Name, vmi.Node, vmi.PodName, disk.Disk, disk.PVC, "read", disk.Name,
 				)
 				ch <- prometheus.MustNewConstMetric(
 					iopsDesc, prometheus.GaugeValue, disk.RdIOPS,
-					vmi.Namespace, vmi.Name, vmi.Node, disk.Disk, disk.PVC, "read", disk.Name,
+					vmi.Namespace, vmi.Name, vmi.Node, vmi.PodName, disk.Disk, disk.PVC, "read", disk.Name,
 				)
 			}
 			if disk.WrIOPS > 0 || disk.WrLatSec > 0 {
 				ch <- prometheus.MustNewConstMetric(
 					latencyAvgDesc, prometheus.GaugeValue, disk.WrLatSec,
-					vmi.Namespace, vmi.Name, vmi.Node, disk.Disk, disk.PVC, "write", disk.Name,
+					vmi.Namespace, vmi.Name, vmi.Node, vmi.PodName, disk.Disk, disk.PVC, "write", disk.Name,
 				)
 				ch <- prometheus.MustNewConstMetric(
 					iopsDesc, prometheus.GaugeValue, disk.WrIOPS,
-					vmi.Namespace, vmi.Name, vmi.Node, disk.Disk, disk.PVC, "write", disk.Name,
+					vmi.Namespace, vmi.Name, vmi.Node, vmi.PodName, disk.Disk, disk.PVC, "write", disk.Name,
 				)
 			}
 		}
@@ -429,6 +430,7 @@ func (c *Collector) scrapeVM(ctx context.Context, vs *vmState) (*vmiResult, erro
 		Namespace: vs.namespace,
 		Name:      vs.vmi,
 		Node:      c.cfg.NodeName,
+		PodName:   vs.podName,
 		Disks:     disks,
 	}, nil
 }

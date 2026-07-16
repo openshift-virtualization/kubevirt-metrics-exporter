@@ -1,92 +1,70 @@
 package config
 
-import "testing"
+import (
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
+)
 
-func TestParseBoundariesNs(t *testing.T) {
-	result := parseBoundariesNs("10000000,100000000,1000000000")
-	if len(result) != 3 {
-		t.Fatalf("len = %d, want 3", len(result))
-	}
-	if result[0] != 10000000 {
-		t.Errorf("result[0] = %d, want 10000000", result[0])
-	}
-}
+var _ = Describe("parseBoundariesNs", func() {
+	It("should parse comma-separated nanosecond boundaries", func() {
+		result := parseBoundariesNs("10000000,100000000,1000000000")
+		Expect(result).To(HaveLen(3))
+		Expect(result[0]).To(Equal(int64(10000000)))
+	})
+})
 
-func TestParseBoundariesSeconds(t *testing.T) {
-	result := parseBoundariesSeconds("10000000,100000000,1000000000")
-	if len(result) != 3 {
-		t.Fatalf("len = %d, want 3", len(result))
-	}
-	if result[0] != 0.01 {
-		t.Errorf("result[0] = %f, want 0.01", result[0])
-	}
-	if result[1] != 0.1 {
-		t.Errorf("result[1] = %f, want 0.1", result[1])
-	}
-	if result[2] != 1.0 {
-		t.Errorf("result[2] = %f, want 1.0", result[2])
-	}
-}
+var _ = Describe("parseBoundariesSeconds", func() {
+	It("should convert nanosecond boundaries to seconds", func() {
+		result := parseBoundariesSeconds("10000000,100000000,1000000000")
+		Expect(result).To(HaveLen(3))
+		Expect(result[0]).To(Equal(0.01))
+		Expect(result[1]).To(Equal(0.1))
+		Expect(result[2]).To(Equal(1.0))
+	})
+})
 
-func TestParseNamespaces(t *testing.T) {
-	tests := []struct {
-		input string
-		want  []string
-	}{
-		{"", nil},
-		{"default", []string{"default"}},
-		{"default,production", []string{"default", "production"}},
-		{" default , production ", []string{"default", "production"}},
-		{"ns1,,ns2", []string{"ns1", "ns2"}},
-	}
-
-	for _, tt := range tests {
-		got := ParseNamespaces(tt.input)
-		if tt.want == nil {
-			if got != nil {
-				t.Errorf("ParseNamespaces(%q) = %v, want nil", tt.input, got)
+var _ = Describe("ParseNamespaces", func() {
+	DescribeTable("should parse namespace strings",
+		func(input string, want []string) {
+			got := ParseNamespaces(input)
+			if want == nil {
+				Expect(got).To(BeNil())
+			} else {
+				Expect(got).To(Equal(want))
 			}
-			continue
-		}
-		if len(got) != len(tt.want) {
-			t.Errorf("ParseNamespaces(%q) len = %d, want %d", tt.input, len(got), len(tt.want))
-			continue
-		}
-		for i, v := range got {
-			if v != tt.want[i] {
-				t.Errorf("ParseNamespaces(%q)[%d] = %q, want %q", tt.input, i, v, tt.want[i])
-			}
-		}
-	}
-}
+		},
+		Entry("empty string", "", nil),
+		Entry("single namespace", "default", []string{"default"}),
+		Entry("two namespaces", "default,production", []string{"default", "production"}),
+		Entry("with spaces", " default , production ", []string{"default", "production"}),
+		Entry("empty segment skipped", "ns1,,ns2", []string{"ns1", "ns2"}),
+	)
+})
 
-func TestValidate(t *testing.T) {
-	valid := &Config{
-		NodeName:         "worker-1",
-		BoundariesNs:     []int64{10000000},
-		Boundaries:       []float64{0.01},
-		EBPFScanInterval: 30,
-	}
-	if err := valid.Validate(); err != nil {
-		t.Errorf("valid config: unexpected error: %v", err)
-	}
+var _ = Describe("Config.Validate", func() {
+	var valid *Config
 
-	tests := []struct {
-		name   string
-		modify func(*Config)
-	}{
-		{"empty node name", func(c *Config) { c.NodeName = "" }},
-		{"empty boundaries", func(c *Config) { c.BoundariesNs = nil }},
-		{"zero scan interval with ebpf", func(c *Config) { c.EnableEBPF = true; c.EBPFScanInterval = 0 }},
-	}
+	BeforeEach(func() {
+		valid = &Config{
+			NodeName:         "worker-1",
+			BoundariesNs:     []int64{10000000},
+			Boundaries:       []float64{0.01},
+			EBPFScanInterval: 30,
+		}
+	})
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+	It("should accept a valid config", func() {
+		Expect(valid.Validate()).To(Succeed())
+	})
+
+	DescribeTable("should reject invalid configs",
+		func(modify func(*Config)) {
 			c := *valid
-			tt.modify(&c)
-			if err := c.Validate(); err == nil {
-				t.Error("expected validation error, got nil")
-			}
-		})
-	}
-}
+			modify(&c)
+			Expect(c.Validate()).To(HaveOccurred())
+		},
+		Entry("empty node name", func(c *Config) { c.NodeName = "" }),
+		Entry("empty boundaries", func(c *Config) { c.BoundariesNs = nil }),
+		Entry("zero scan interval with ebpf enabled", func(c *Config) { c.EnableEBPF = true; c.EBPFScanInterval = 0 }),
+	)
+})

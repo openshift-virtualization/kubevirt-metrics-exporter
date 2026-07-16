@@ -1,7 +1,8 @@
 package qmp
 
 import (
-	"testing"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 const testDomainXML = `<domain type='kvm'>
@@ -42,84 +43,56 @@ const testDomainXML = `<domain type='kvm'>
   </devices>
 </domain>`
 
-func TestParseDiskAddresses(t *testing.T) {
-	result, err := ParseDiskAddresses(testDomainXML)
-	if err != nil {
-		t.Fatalf("ParseDiskAddresses() error = %v", err)
-	}
+var _ = Describe("ParseDiskAddresses", func() {
+	It("should parse PCI-addressed ua- disks", func() {
+		result, err := ParseDiskAddresses(testDomainXML)
+		Expect(err).NotTo(HaveOccurred())
 
-	expected := map[PCIAddr]string{
-		{Domain: 0, Bus: 7, Slot: 0, Function: 0}: "vol-0",
-		{Domain: 0, Bus: 8, Slot: 0, Function: 0}: "vol-1",
-		{Domain: 0, Bus: 9, Slot: 0, Function: 0}: "vol-2",
-	}
-
-	if len(result) != len(expected) {
-		t.Fatalf("expected %d entries, got %d: %v", len(expected), len(result), result)
-	}
-
-	for addr, wantName := range expected {
-		if gotName, ok := result[addr]; !ok {
-			t.Errorf("missing PCI addr %+v", addr)
-		} else if gotName != wantName {
-			t.Errorf("PCI addr %+v: got %q, want %q", addr, gotName, wantName)
+		expected := map[PCIAddr]string{
+			{Domain: 0, Bus: 7, Slot: 0, Function: 0}: "vol-0",
+			{Domain: 0, Bus: 8, Slot: 0, Function: 0}: "vol-1",
+			{Domain: 0, Bus: 9, Slot: 0, Function: 0}: "vol-2",
 		}
-	}
-}
+		Expect(result).To(Equal(expected))
+	})
 
-func TestParseDiskAddresses_SkipsCDROM(t *testing.T) {
-	result, err := ParseDiskAddresses(testDomainXML)
-	if err != nil {
-		t.Fatalf("ParseDiskAddresses() error = %v", err)
-	}
-
-	for _, name := range result {
-		if name == "cd-rom" {
-			t.Error("cd-rom should be skipped (device='cdrom')")
+	It("should skip cdrom devices", func() {
+		result, err := ParseDiskAddresses(testDomainXML)
+		Expect(err).NotTo(HaveOccurred())
+		for _, name := range result {
+			Expect(name).NotTo(Equal("cd-rom"))
 		}
-	}
-}
+	})
 
-func TestParseDiskAddresses_SkipsNonPCI(t *testing.T) {
-	xml := `<domain><devices>
+	It("should skip disks with non-PCI addresses", func() {
+		xml := `<domain><devices>
     <disk type='block' device='disk'>
       <alias name='ua-sata-disk'/>
       <address type='drive' controller='0' bus='0' target='0' unit='0'/>
     </disk>
   </devices></domain>`
 
-	result, err := ParseDiskAddresses(xml)
-	if err != nil {
-		t.Fatalf("ParseDiskAddresses() error = %v", err)
-	}
-	if len(result) != 0 {
-		t.Errorf("expected 0 entries for non-PCI address, got %d", len(result))
-	}
-}
+		result, err := ParseDiskAddresses(xml)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result).To(BeEmpty())
+	})
 
-func TestParseDiskAddresses_SkipsNonUAAlias(t *testing.T) {
-	xml := `<domain><devices>
+	It("should skip disks without ua- alias", func() {
+		xml := `<domain><devices>
     <disk type='block' device='disk'>
       <alias name='virtio-disk0'/>
       <address type='pci' domain='0x0000' bus='0x05' slot='0x00' function='0x0'/>
     </disk>
   </devices></domain>`
 
-	result, err := ParseDiskAddresses(xml)
-	if err != nil {
-		t.Fatalf("ParseDiskAddresses() error = %v", err)
-	}
-	if len(result) != 0 {
-		t.Errorf("expected 0 entries for non-ua alias, got %d", len(result))
-	}
-}
+		result, err := ParseDiskAddresses(xml)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result).To(BeEmpty())
+	})
 
-func TestParseDiskAddresses_EmptyXML(t *testing.T) {
-	result, err := ParseDiskAddresses("<domain><devices></devices></domain>")
-	if err != nil {
-		t.Fatalf("ParseDiskAddresses() error = %v", err)
-	}
-	if len(result) != 0 {
-		t.Errorf("expected 0 entries, got %d", len(result))
-	}
-}
+	It("should return empty map for empty devices", func() {
+		result, err := ParseDiskAddresses("<domain><devices></devices></domain>")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(result).To(BeEmpty())
+	})
+})

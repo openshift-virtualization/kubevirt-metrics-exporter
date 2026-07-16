@@ -233,6 +233,7 @@ var _ = Describe("Collector", func() {
 					Namespace: "default",
 					Name:      "test-vm",
 					Node:      "node-1",
+					PodName:   "virt-launcher-test-vm-abcde",
 					Devices: []DeviceResult{
 						{
 							Disk: "rootdisk",
@@ -291,6 +292,7 @@ var _ = Describe("Collector", func() {
 				Expect(labels).To(HaveKeyWithValue("namespace", "default"))
 				Expect(labels).To(HaveKeyWithValue("name", "test-vm"))
 				Expect(labels).To(HaveKeyWithValue("node", "node-1"))
+				Expect(labels).To(HaveKeyWithValue("pod", "virt-launcher-test-vm-abcde"))
 				Expect(labels).To(HaveKeyWithValue("disk", "rootdisk"))
 				Expect(labels).To(HaveKey("operation"))
 
@@ -475,6 +477,7 @@ var _ = Describe("Collector virtqueue metrics", func() {
 					Namespace: "default",
 					Name:      "test-vm",
 					Node:      "node-1",
+					PodName:   "virt-launcher-test-vm-abcde",
 					Virtqueues: []VirtqueueResult{
 						{Disk: "rootdisk", PVC: "my-pvc", Bus: "virtio", Queue: 0, Inuse: 10, VringNum: 256},
 						{Disk: "rootdisk", PVC: "my-pvc", Bus: "virtio", Queue: 1, Inuse: 5, VringNum: 256},
@@ -523,6 +526,7 @@ var _ = Describe("Collector virtqueue metrics", func() {
 				Expect(labels).To(HaveKeyWithValue("namespace", "default"))
 				Expect(labels).To(HaveKeyWithValue("name", "test-vm"))
 				Expect(labels).To(HaveKeyWithValue("node", "node-1"))
+				Expect(labels).To(HaveKeyWithValue("pod", "virt-launcher-test-vm-abcde"))
 				Expect(labels).To(HaveKeyWithValue("disk", "rootdisk"))
 				Expect(labels).To(HaveKeyWithValue("persistentvolumeclaim", "my-pvc"))
 				Expect(labels).To(HaveKeyWithValue("bus", "virtio"))

@@ -19,7 +19,7 @@ var (
 	latencyDesc = prometheus.NewDesc(
 		"kubevirt_vmi_storage_io_latency_seconds",
 		"Block I/O latency histogram for KubeVirt VMI disks via QMP",
-		[]string{"namespace", "name", "node", "disk", "persistentvolumeclaim", "operation"},
+		[]string{"namespace", "name", "node", "pod", "disk", "persistentvolumeclaim", "operation"},
 		nil,
 	)
 
@@ -38,14 +38,14 @@ var (
 	virtqueueInuseDesc = prometheus.NewDesc(
 		"kubevirt_vmi_storage_queue_inuse",
 		"Number of in-flight descriptors in a storage virtqueue",
-		[]string{"namespace", "name", "node", "disk", "persistentvolumeclaim", "queue", "bus"},
+		[]string{"namespace", "name", "node", "pod", "disk", "persistentvolumeclaim", "queue", "bus"},
 		nil,
 	)
 
 	virtqueueSizeDesc = prometheus.NewDesc(
 		"kubevirt_vmi_storage_queue_size",
 		"Maximum number of descriptors (capacity) of a storage virtqueue",
-		[]string{"namespace", "name", "node", "disk", "persistentvolumeclaim", "queue", "bus"},
+		[]string{"namespace", "name", "node", "pod", "disk", "persistentvolumeclaim", "queue", "bus"},
 		nil,
 	)
 )
@@ -54,6 +54,7 @@ type VMIResult struct {
 	Namespace  string
 	Name       string
 	Node       string
+	PodName    string
 	Devices    []DeviceResult
 	Virtqueues []VirtqueueResult
 }
@@ -200,7 +201,7 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 				h, err := prometheus.NewConstHistogram(
 					latencyDesc,
 					count, sum, buckets,
-					vmi.Namespace, vmi.Name, vmi.Node, dev.Disk, dev.PVC, op,
+					vmi.Namespace, vmi.Name, vmi.Node, vmi.PodName, dev.Disk, dev.PVC, op,
 				)
 				if err != nil {
 					continue
@@ -212,9 +213,9 @@ func (c *Collector) Collect(ch chan<- prometheus.Metric) {
 		for _, vq := range vmi.Virtqueues {
 			queueLabel := strconv.Itoa(vq.Queue)
 			ch <- prometheus.MustNewConstMetric(virtqueueInuseDesc, prometheus.GaugeValue, float64(vq.Inuse),
-				vmi.Namespace, vmi.Name, vmi.Node, vq.Disk, vq.PVC, queueLabel, vq.Bus)
+				vmi.Namespace, vmi.Name, vmi.Node, vmi.PodName, vq.Disk, vq.PVC, queueLabel, vq.Bus)
 			ch <- prometheus.MustNewConstMetric(virtqueueSizeDesc, prometheus.GaugeValue, float64(vq.VringNum),
-				vmi.Namespace, vmi.Name, vmi.Node, vq.Disk, vq.PVC, queueLabel, vq.Bus)
+				vmi.Namespace, vmi.Name, vmi.Node, vmi.PodName, vq.Disk, vq.PVC, queueLabel, vq.Bus)
 		}
 	}
 }
@@ -588,6 +589,7 @@ func (c *Collector) scrapeVM(ctx context.Context, conn *vmConnection) (*VMIResul
 		Namespace:  conn.namespace,
 		Name:       conn.vmi,
 		Node:       c.cfg.NodeName,
+		PodName:    conn.podName,
 		Devices:    devices,
 		Virtqueues: virtqueues,
 	}, nil

@@ -6,16 +6,25 @@ package qmp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	libvirt "github.com/digitalocean/go-libvirt"
 	"github.com/digitalocean/go-libvirt/socket/dialers"
 )
 
-const qmpFlag = 0
+const (
+	qmpFlag               = 0
+	defaultConnectTimeout = 5 * time.Second
+)
+
+// ErrClientClosed is returned when an operation is attempted on a closed Client.
+// A closed client must not be reused; callers should reconnect.
+var ErrClientClosed = errors.New("qmp client is closed")
 
 type qmpCommand struct {
 	Execute   string `json:"execute"`
@@ -31,65 +40,106 @@ type qmpResponse struct {
 }
 
 type Client struct {
-	mu     sync.Mutex
+	mu     sync.Mutex // Serializes libvirt requests, but must not block Close.
 	conn   net.Conn
 	lv     *libvirt.Libvirt
 	domain libvirt.Domain
-	closed bool
+
+	closed    atomic.Bool
+	closeOnce sync.Once
+	closeErr  error
 }
 
+
+// ClientForTest wraps an existing connection without a libvirt handshake.
+// Intended for cross-package tests of Close/Closed and collector recovery.
+func ClientForTest(conn net.Conn) *Client {
+	return &Client{conn: conn}
+}
+
+// Dial connects to a domain with a bounded connection setup time.
 func Dial(virtqemudSockPath, domainName string) (*Client, error) {
-	conn, err := net.Dial("unix", virtqemudSockPath)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultConnectTimeout)
+	defer cancel()
+	return DialContext(ctx, virtqemudSockPath, domainName)
+}
+
+// DialContext applies ctx to dialing, session setup, and domain lookup.
+func DialContext(ctx context.Context, virtqemudSockPath, domainName string) (*Client, error) {
+	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", virtqemudSockPath)
 	if err != nil {
 		return nil, fmt.Errorf("dialing virtqemud at %s: %w", virtqemudSockPath, err)
 	}
-
-	dialer := dialers.NewAlreadyConnected(conn)
-	lv := libvirt.NewWithDialer(dialer)
-
-	if err := lv.ConnectToURI(libvirt.QEMUSession); err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("connecting to libvirt session: %w", err)
-	}
-
-	domain, err := lv.DomainLookupByName(domainName)
-	if err != nil {
-		lv.Disconnect()
-		conn.Close()
-		return nil, fmt.Errorf("looking up domain %s: %w", domainName, err)
-	}
-
-	return &Client{
-		conn:   conn,
-		lv:     lv,
-		domain: domain,
-	}, nil
+	return newClient(ctx, conn, domainName)
 }
 
+func newClient(ctx context.Context, conn net.Conn, domainName string) (*Client, error) {
+	c := &Client{
+		conn: conn,
+		lv:   libvirt.NewWithDialer(dialers.NewAlreadyConnected(conn)),
+	}
+	err := c.call(ctx, func() error {
+		if err := c.lv.ConnectToURI(libvirt.QEMUSession); err != nil {
+			return fmt.Errorf("connecting to libvirt session: %w", err)
+		}
+		domain, err := c.lv.DomainLookupByName(domainName)
+		if err != nil {
+			return fmt.Errorf("looking up domain %s: %w", domainName, err)
+		}
+		c.domain = domain
+		return nil
+	})
+	if err != nil {
+		c.Close()
+		return nil, err
+	}
+	return c, nil
+}
+
+// Close interrupts in-flight requests without waiting for a libvirt RPC.
+// go-libvirt cleans up its reader and pending requests when the transport closes.
 func (c *Client) Close() error {
+	c.closeOnce.Do(func() {
+		c.closed.Store(true)
+		c.closeErr = c.conn.Close()
+	})
+	return c.closeErr
+}
+
+// Closed reports whether Close has been called (including via context cancellation).
+func (c *Client) Closed() bool {
+	return c.closed.Load()
+}
+
+// call closes the transport on cancellation. Socket deadlines alone do not
+// interrupt go-libvirt RPCs: its reader retries timeout errors while the caller
+// remains blocked waiting for a response.
+func (c *Client) call(ctx context.Context, fn func() error) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.closed {
-		return nil
+	if err := ctx.Err(); err != nil {
+		return err
 	}
-	c.closed = true
-	c.lv.Disconnect()
-	return c.conn.Close()
+	if c.closed.Load() {
+		return ErrClientClosed
+	}
+
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		c.Close()
+		close(done)
+	})
+	err := fn()
+	if !stop() {
+		// Wait for the callback before another request can use this client.
+		<-done
+		return ctx.Err()
+	}
+	return err
 }
 
 func (c *Client) QueryBlockStats(ctx context.Context) (*BlockStatsResponse, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed {
-		return nil, fmt.Errorf("client is closed")
-	}
-
-	if deadline, ok := ctx.Deadline(); ok {
-		c.conn.SetDeadline(deadline)
-		defer c.conn.SetDeadline(time.Time{})
-	}
-
-	result, err := c.execQMP("query-blockstats", nil)
+	result, err := c.execQMP(ctx, "query-blockstats", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -103,38 +153,21 @@ func (c *Client) QueryBlockStats(ctx context.Context) (*BlockStatsResponse, erro
 }
 
 func (c *Client) EnableHistogram(ctx context.Context, deviceID string, boundariesNs []int64) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed {
-		return fmt.Errorf("client is closed")
-	}
-
-	if deadline, ok := ctx.Deadline(); ok {
-		c.conn.SetDeadline(deadline)
-		defer c.conn.SetDeadline(time.Time{})
-	}
-
 	args := map[string]any{
 		"id":         deviceID,
 		"boundaries": boundariesNs,
 	}
-	_, err := c.execQMP("block-latency-histogram-set", args)
+	_, err := c.execQMP(ctx, "block-latency-histogram-set", args)
 	return err
 }
 
 func (c *Client) AgentCommand(ctx context.Context, cmd string, timeoutSec int32) (string, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed {
-		return "", fmt.Errorf("client is closed")
-	}
-
-	if deadline, ok := ctx.Deadline(); ok {
-		c.conn.SetDeadline(deadline)
-		defer c.conn.SetDeadline(time.Time{})
-	}
-
-	result, err := c.lv.QEMUDomainAgentCommand(c.domain, cmd, timeoutSec, 0)
+	var result []string
+	err := c.call(ctx, func() error {
+		var err error
+		result, err = c.lv.QEMUDomainAgentCommand(c.domain, cmd, timeoutSec, 0)
+		return err
+	})
 	if err != nil {
 		return "", err
 	}
@@ -145,18 +178,7 @@ func (c *Client) AgentCommand(ctx context.Context, cmd string, timeoutSec int32)
 }
 
 func (c *Client) QueryVirtio(ctx context.Context) ([]VirtioDevice, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed {
-		return nil, fmt.Errorf("client is closed")
-	}
-
-	if deadline, ok := ctx.Deadline(); ok {
-		c.conn.SetDeadline(deadline)
-		defer c.conn.SetDeadline(time.Time{})
-	}
-
-	result, err := c.execQMP("x-query-virtio", nil)
+	result, err := c.execQMP(ctx, "x-query-virtio", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -170,19 +192,8 @@ func (c *Client) QueryVirtio(ctx context.Context) ([]VirtioDevice, error) {
 }
 
 func (c *Client) QueryVirtioStatus(ctx context.Context, path string) (*VirtioStatus, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed {
-		return nil, fmt.Errorf("client is closed")
-	}
-
-	if deadline, ok := ctx.Deadline(); ok {
-		c.conn.SetDeadline(deadline)
-		defer c.conn.SetDeadline(time.Time{})
-	}
-
 	args := map[string]any{"path": path}
-	result, err := c.execQMP("x-query-virtio-status", args)
+	result, err := c.execQMP(ctx, "x-query-virtio-status", args)
 	if err != nil {
 		return nil, err
 	}
@@ -196,19 +207,8 @@ func (c *Client) QueryVirtioStatus(ctx context.Context, path string) (*VirtioSta
 }
 
 func (c *Client) QueryVirtioQueueStatus(ctx context.Context, path string, queue int) (*VirtQueueStatus, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed {
-		return nil, fmt.Errorf("client is closed")
-	}
-
-	if deadline, ok := ctx.Deadline(); ok {
-		c.conn.SetDeadline(deadline)
-		defer c.conn.SetDeadline(time.Time{})
-	}
-
 	args := map[string]any{"path": path, "queue": queue}
-	result, err := c.execQMP("x-query-virtio-queue-status", args)
+	result, err := c.execQMP(ctx, "x-query-virtio-queue-status", args)
 	if err != nil {
 		return nil, err
 	}
@@ -223,22 +223,30 @@ func (c *Client) QueryVirtioQueueStatus(ctx context.Context, path string, queue 
 
 // DomainGetXMLDesc returns the libvirt domain XML for the connected domain.
 func (c *Client) DomainGetXMLDesc() (string, error) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed {
-		return "", fmt.Errorf("client is closed")
-	}
-	return c.lv.DomainGetXMLDesc(c.domain, 0)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultConnectTimeout)
+	defer cancel()
+	var result string
+	err := c.call(ctx, func() error {
+		var err error
+		result, err = c.lv.DomainGetXMLDesc(c.domain, 0)
+		return err
+	})
+	return result, err
 }
 
-func (c *Client) execQMP(command string, args any) (json.RawMessage, error) {
+func (c *Client) execQMP(ctx context.Context, command string, args any) (json.RawMessage, error) {
 	cmd := qmpCommand{Execute: command, Arguments: args}
 	cmdJSON, err := json.Marshal(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling QMP command: %w", err)
 	}
 
-	result, err := c.lv.QEMUDomainMonitorCommand(c.domain, string(cmdJSON), uint32(qmpFlag))
+	var result string
+	err = c.call(ctx, func() error {
+		var err error
+		result, err = c.lv.QEMUDomainMonitorCommand(c.domain, string(cmdJSON), uint32(qmpFlag))
+		return err
+	})
 	if err != nil {
 		return nil, fmt.Errorf("QMP %s: %w", command, err)
 	}
